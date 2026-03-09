@@ -1,0 +1,38 @@
+/**
+ * @file config.h.in
+ * @author PeterC (petercalifano.gs@gmail.com)
+ * @brief Configuration header file for library src, with variables set by CMake
+ * @version 0.1
+ * @date 2025-01-04
+ */
+#pragma once
+#include <cstdio>
+#include <string>
+
+// Library version
+#define PROJECT_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define PROJECT_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define PROJECT_VERSION_PATCH @PROJECT_VERSION_PATCH@
+#define PROJECT_VERSION "@PROJECT_VERSION@"
+#define FULL_VERSION "@FULL_VERSION@"
+
+
+void PrintVersion()
+{   
+    printf("Application Version: %s\n", PROJECT_VERSION);
+    printf("Full Version: %s\n", FULL_VERSION);
+    printf("Version Details:\n");
+    printf("Major: %d\n", PROJECT_VERSION_MAJOR);
+    printf("Minor: %d\n", PROJECT_VERSION_MINOR);
+    printf("Patch: %d\n", PROJECT_VERSION_PATCH);
+    printf("Build Date: %s\n", __DATE__);
+    printf("Build Time: %s\n", __TIME__);
+}
+
+std::string GetVersionString()
+{
+    return std::string(PROJECT_VERSION);
+}
+
+#cmakedefine VARIABLE_DEFINED_BY_CMAKE // This is a placeholder for a variable defined by CMake. If it is not define, the #define is not included in the output file from configure_file().
+

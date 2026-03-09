@@ -1,0 +1,134 @@
+name: build_cpplinux
+run-name: Build and test @PROJECT_NAME@
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Runner type to use"
+        required: true
+        default: github-hosted
+        type: choice
+        options:
+          - github-hosted
+          - self-hosted
+  push:
+    branches:
+      - "master"
+      - "main"
+      - "dev_main"
+    paths:
+      - src/**
+      - examples/**
+      - tests/**
+      - lib/**
+      - cmake/**
+      - CMakeLists.txt
+      - build_lib.sh
+      - .github/workflows/build_linux.yml
+  pull_request:
+    branches:
+      - "master"
+      - "main"
+      - "dev_main"
+      - "dev*"
+    paths:
+      - src/**
+      - examples/**
+      - tests/**
+      - lib/**
+      - cmake/**
+      - CMakeLists.txt
+      - build_lib.sh
+      - .github/workflows/build_linux.yml
+
+jobs:
+  build:
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.runner == 'self-hosted' && fromJSON('["self-hosted","Linux","X64"]') || 'ubuntu-latest' }}
+    env:
+      BUILD_DIR: build_ci
+      BUILD_TYPE: RelWithDebInfo
+      CTEST_OUTPUT_ON_FAILURE: 1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.runner == 'github-hosted' }}
+        run: |
+          sudo apt update
+          sudo apt install -y cmake ninja-build g++ ccache libboost-all-dev libeigen3-dev python3-dev
+
+      - name: Validate self-hosted prerequisites
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.runner == 'self-hosted' }}
+        run: |
+          command -v cmake
+          command -v ninja
+          command -v g++
+          command -v ccache
+          command -v python3
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'src/**', 'tests/**') }}
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ github.ref_name }}-
+            ccache-${{ runner.os }}-
+
+      - name: Configure
+        run: |
+          cmake -S . -B "${BUILD_DIR}" -GNinja \
+            -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+            -DENABLE_TESTS=ON \
+            -DENABLE_CUDA=OFF \
+            -DENABLE_OPTIX=OFF \
+            -DENABLE_OPENGL=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build
+        run: cmake --build "${BUILD_DIR}" --parallel 4
+
+      - name: Show ccache stats
+        run: ccache --show-stats || true
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cmake-build-tree
+          path: ${{ env.BUILD_DIR }}
+          if-no-files-found: error
+          retention-days: 3
+
+  test:
+    needs: build
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.runner == 'self-hosted' && fromJSON('["self-hosted","Linux","X64"]') || 'ubuntu-latest' }}
+    env:
+      BUILD_DIR: build_ci
+      CTEST_OUTPUT_ON_FAILURE: 1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install test dependencies
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.runner == 'github-hosted' }}
+        run: |
+          sudo apt update
+          sudo apt install -y cmake ninja-build g++ libboost-all-dev libeigen3-dev python3-dev
+
+      - name: Validate self-hosted prerequisites
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.runner == 'self-hosted' }}
+        run: |
+          command -v cmake
+          command -v ctest
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: cmake-build-tree
+          path: .
+
+      - name: Test
+        run: ctest --test-dir "${BUILD_DIR}" --output-on-failure --parallel 2 --no-tests=error

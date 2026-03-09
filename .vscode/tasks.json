@@ -1,0 +1,20 @@
+{
+    "tasks": [
+        {
+         
+            "label": "C/C++: Cmake DEBUG build",
+            "type": "shell",
+            "command": "bash .vscode/cmake_debug.sh ${workspaceFolder} ",
+            "detail": "CMake build task only for UNIX systems."
+        },
+
+        {
+            "label": "C/C++: Cmake RELEASE build",
+            "type": "shell",
+            "command": "bash .vscode/cmake_run.sh ${workspaceFolder} ",
+            "detail": "CMake build task only for UNIX systems."
+        }        
+        
+    ],
+    "version": "2.0.0"
+}

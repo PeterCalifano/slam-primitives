@@ -1,0 +1,111 @@
+name: build_cpplinux_cuda
+run-name: Build and test @PROJECT_NAME@ (CUDA)
+
+on:
+  workflow_dispatch:
+    inputs:
+      enable_optix:
+        description: "Enable OptiX (requires SDK on runner)"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+concurrency:
+  group: cuda-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - gpu
+      - cuda
+    timeout-minutes: 90
+    env:
+      BUILD_DIR: build_cuda_ci
+      BUILD_TYPE: RelWithDebInfo
+      CTEST_OUTPUT_ON_FAILURE: 1
+      ENABLE_OPTIX: ${{ github.event.inputs.enable_optix == 'true' && 'ON' || 'OFF' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate CUDA prerequisites
+        run: |
+          command -v cmake
+          command -v ninja
+          command -v g++
+          command -v ccache
+          command -v nvcc
+          command -v nvidia-smi
+          command -v python3
+          nvidia-smi
+          nvcc --version
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-cuda-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'src/**', 'tests/**', '.github/workflows/build_linux_cuda.yml') }}
+          restore-keys: |
+            ccache-cuda-${{ runner.os }}-${{ github.ref_name }}-
+            ccache-cuda-${{ runner.os }}-
+
+      - name: Configure
+        run: |
+          cmake -S . -B "${BUILD_DIR}" -GNinja \
+            -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+            -DENABLE_TESTS=ON \
+            -DENABLE_CUDA=ON \
+            -DENABLE_OPTIX="${ENABLE_OPTIX}" \
+            -DENABLE_OPENGL=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build
+        run: cmake --build "${BUILD_DIR}" --parallel 4
+
+      - name: Show ccache stats
+        run: ccache --show-stats || true
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cmake-build-tree-cuda
+          path: ${{ env.BUILD_DIR }}
+          if-no-files-found: error
+          retention-days: 3
+
+  test:
+    needs: build
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - gpu
+      - cuda
+    timeout-minutes: 45
+    env:
+      BUILD_DIR: build_cuda_ci
+      CTEST_OUTPUT_ON_FAILURE: 1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate test prerequisites
+        run: |
+          command -v ctest
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: cmake-build-tree-cuda
+          path: .
+
+      - name: Test
+        run: ctest --test-dir "${BUILD_DIR}" --output-on-failure --parallel 2 --no-tests=error

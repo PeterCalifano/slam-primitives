@@ -17,9 +17,13 @@ set(TESTS_LIST "")
 # Include the content of the fixtures directory
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
-# Add subdirectory 
-add_subdirectory(template_test)
-add_subdirectory(template_fixtures)
+# Add subdirectory
+add_subdirectory(test_types)
+add_subdirectory(test_containers)
+add_subdirectory(test_feature_sets)
+add_subdirectory(test_bundle)
+add_subdirectory(test_covisibility)
+add_subdirectory(test_fixtures)
 
 # Add tests to build
 add_tests(${project_name} EXCLUDED_LIST TESTS_LIST ${CUDA_COMPILE_TARGET} CATCH2_TEST_PROPERTIES Catch2::Catch2WithMain)

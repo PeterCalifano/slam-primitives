@@ -1,6 +1,6 @@
 # cpp_cuda_template_project
 
-A CMake template for building GPU-accelerated C++ shared libraries with optional CUDA/OptiX, Python/MATLAB bindings, and profiling support. Designed to be cloned and renamed into a real project.
+A CMake template for building GPU-accelerated C++ libraries with optional CUDA/OptiX, Python/MATLAB bindings, and profiling support. Shared builds are the default, and static builds are selectable through standard CMake `BUILD_SHARED_LIBS`. Designed to be cloned and renamed into a real project.
 
 ## Requirements
 
@@ -24,8 +24,11 @@ A CMake template for building GPU-accelerated C++ shared libraries with optional
 ```bash
 git clone <repo-url> my_project && cd my_project
 
-# Default build (RelWithDebInfo) + run tests
+# Default shared build (RelWithDebInfo) + run tests
 ./build_lib.sh
+
+# Static library build
+./build_lib.sh -D BUILD_SHARED_LIBS=OFF
 
 # Debug build, Ninja generator, 8 jobs
 ./build_lib.sh -t debug -N -j 8
@@ -113,6 +116,7 @@ See [`doc/build_script_doc.md`](doc/build_script_doc.md) for a detailed option r
 | `ENABLE_OPENGL` | OFF | OpenGL support |
 | `ENABLE_TESTS` | ON | Build and run Catch2 tests |
 | `ENABLE_PROFILING` | OFF | Profiling-friendly flags + optional gperftools |
+| `BUILD_SHARED_LIBS` | ON | Build compiled libraries as shared (`OFF` builds static archives) |
 | `SANITIZE_BUILD` | OFF | Enable sanitizers (see `SANITIZERS` variable) |
 | `SANITIZERS` | `address,undefined,leak` | Comma-separated sanitizer list |
 | `CPU_ENABLE_NATIVE_TUNING` | ON | Adds `-march=native -mtune=native` for GNU/Clang optimized builds |
@@ -287,6 +291,8 @@ Install to the default prefix (`./install`) or a custom one:
 ./build_lib.sh -t release -i
 # or with custom prefix:
 ./build_lib.sh -t release -i -D CMAKE_INSTALL_PREFIX=/opt/my_project
+# or install a static library package:
+./build_lib.sh -t release -i -D BUILD_SHARED_LIBS=OFF
 ```
 
 In a downstream CMake project:

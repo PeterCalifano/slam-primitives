@@ -7,6 +7,7 @@ cmake_minimum_required(VERSION 3.15 FATAL_ERROR)
 
 # PROJECT DEFINITION
 set(project_name "example_consumer_project")
+option(BUILD_SHARED_LIBS "Build libraries as shared" ON)
 
 # Assumes one has built the template_project with install in the root
 set(DEPENDENCY_ROOT_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/../../")
@@ -15,7 +16,7 @@ set(DEPENDENCY_ROOT_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/../../")
 if (NOT EXISTS "${DEPENDENCY_ROOT_PREFIX}/install")
     # Build and install it
     execute_process(
-        COMMAND bash -c "cd ${DEPENDENCY_ROOT_PREFIX} && cmake -S . -B build -DCMAKE_INSTALL_PREFIX=./install && cmake --build build --target install"
+        COMMAND bash -c "cd ${DEPENDENCY_ROOT_PREFIX} && cmake -S . -B build -DCMAKE_INSTALL_PREFIX=./install -DBUILD_SHARED_LIBS=${BUILD_SHARED_LIBS} && cmake --build build --target install"
     )
 endif()
 

@@ -8,7 +8,7 @@ set(MATLAB_DEFAULT_RELEASE "R2023b")
 #set(CMAKE_CUDA_COMPILER nvcc)
 
 # PROJECT DEFINITION
-set(project_name "template_project")
+set(project_name "slam-primitives")
 
 # Set install default directory if not specified
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -18,6 +18,7 @@ endif()
 # Major options
 option(ENABLE_OPTIX "Enable OptiX" OFF)
 option(ENABLE_CUDA "Enable CUDA" OFF)
+option(BUILD_SHARED_LIBS "Build libraries as shared" ON)
 include(cmake/HandleOpenMP.cmake)
 
 set(languages CXX) # ACHTUNG: PTX code requires C language!
@@ -70,6 +71,7 @@ set(CUDA_COMPILE_TARGET "${LIB_NAMESPACE}_cuda_compile_interface")
 set(OPTIX_COMPILE_TARGET "${LIB_NAMESPACE}_optix_compile_interface")
 set(OPENGL_COMPILE_TARGET "${LIB_NAMESPACE}_opengl_compile_interface")
 set(LIB_COMPILE_TARGET "${LIB_NAMESPACE}_lib_compile_interface")
+set(SPDLOG_COMPILE_TARGET "${LIB_NAMESPACE}_spdlog_interface")
 set(SANITIZER_TARGET "${LIB_NAMESPACE}_sanitizer_target_interface")
 
 # Handle toolchain settings (after project so compiler/system vars are populated)
@@ -109,6 +111,8 @@ endif()
 # OPTIONS
 option(ENABLE_TESTS              "Build and run tests" ON)
 option(ENABLE_FETCH_CATCH2 "Fetch Catch2 from GitHub if not found" ON)
+option(ENABLE_SPDLOG "Enable spdlog logging support" OFF)
+option(ENABLE_FETCH_SPDLOG "Fetch spdlog from GitHub if not found" OFF)
 option(VERBOSE "Verbose output" OFF) # Defines VERBOSE flag in code if set to ON
 
 if (NOT DEFINED GTWRAP_BUILD_PYTHON_DEFAULT)
@@ -286,6 +290,8 @@ find_package( Doxygen QUIET)
 
 # Handle Catch2 tools
 include(cmake/HandleCatch2.cmake)
+include(cmake/HandleSpdlog.cmake)
+handle_spdlog(TARGET ${SPDLOG_COMPILE_TARGET})
 
 # Include cmake tools (depends on Catch2)
 include(cmake/cmake_utils.cmake)
@@ -320,6 +326,9 @@ if (ENABLE_OPENGL)
 endif()
 if(ENABLE_TBB)
   list(APPEND EXPORT_TARGET_DEPS TBB)
+endif()
+if(SPDLOG_ENABLED AND SPDLOG_EXTERNAL_PACKAGE)
+  list(APPEND EXPORT_TARGET_DEPS spdlog)
 endif()
 
 message(STATUS "Target dependencies: ${EXPORT_TARGET_DEPS}")
@@ -460,6 +469,7 @@ message(STATUS "==============================================================="
 message(STATUS "================  Configuration Options  ======================")
 # Project info
 message(STATUS "LIBRARY NAME                              : ${project_name}")
+message(STATUS "LIBRARY TARGET TYPE                       : ${PROJECT_LIBRARY_KIND}")
 message(STATUS "CROSS COMPILING                           : ${CMAKE_CROSSCOMPILING}")
 message(STATUS "HOST SYSTEM                               : ${CMAKE_HOST_SYSTEM}")
 message(STATUS "TARGET SYSTEM                             : ${CMAKE_SYSTEM}")
@@ -502,6 +512,7 @@ message(STATUS "CMAKE_INSTALL_PREFIX                      : ${CMAKE_INSTALL_PREF
 message(STATUS "CMAKE_INSTALL_LIBDIR                      : ${CMAKE_INSTALL_LIBDIR}")
 message(STATUS "CMAKE_INSTALL_INCLUDEDIR                  : ${CMAKE_INSTALL_INCLUDEDIR}")
 message(STATUS "CMAKE_INSTALL_BINDIR                      : ${CMAKE_INSTALL_BINDIR}")
+message(STATUS "BUILD_SHARED_LIBS                         : ${BUILD_SHARED_LIBS}")
 
 # Build type
 if(NOT MSVC AND NOT XCODE_VERSION)

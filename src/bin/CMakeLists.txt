@@ -19,6 +19,11 @@ foreach(exampleFile ${srcProgramsFiles})
     add_executable(${program_name} ${exampleFile})
 
     target_link_libraries(${program_name} PRIVATE ${project_name} ${CUDA_COMPILE_TARGET})
+    if(SPDLOG_ENABLED)
+        target_compile_definitions(${program_name} PRIVATE SPDLOG_UTILS_ENABLED=1)
+    else()
+        target_compile_definitions(${program_name} PRIVATE SPDLOG_UTILS_ENABLED=0)
+    endif()
 
     # Optionally add additional targets or properties if required
     set_target_properties(${program_name} PROPERTIES OUTPUT_NAME "${program_name}")

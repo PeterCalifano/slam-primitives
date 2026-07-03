@@ -22,6 +22,16 @@ TEST_CASE("CFeatureSet default construct", "[feature_sets]")
     REQUIRE_FALSE(s.isInitialized());
 }
 
+TEST_CASE("CFeatureSet setID assigns identifier and marks initialized", "[feature_sets]")
+{
+    Set s;
+
+    s.setID(7);
+
+    REQUIRE(s.getID() == 7);
+    REQUIRE(s.isInitialized());
+}
+
 TEST_CASE("CFeatureSet add keypoints", "[feature_sets]")
 {
     Set s(1);

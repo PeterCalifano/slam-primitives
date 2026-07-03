@@ -18,6 +18,7 @@ TEST_CASE("CFeatureSetBundle allocate and get", "[bundle]")
     REQUIRE(b.activeCount() == 1);
 
     auto& ref = b.get(id);
+    REQUIRE(ref.getID() == id);
     REQUIRE(ref.getTrackLength() == 1);
 }
 

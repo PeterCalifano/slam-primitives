@@ -77,6 +77,14 @@ public:
     /// @return Feature-set identifier.
     auto getID() const -> uint32_t { return set_id_; }
 
+    /// @brief Assign the feature-set identifier after external allocation.
+    /// @param id Unique identifier associated with this feature set.
+    void setID(uint32_t id)
+    {
+        set_id_ = id;
+        is_initialized_ = true;
+    }
+
     /// @brief Get the current number of keypoints stored in the feature set.
     /// @return Number of valid keypoints.
     auto size() const -> uint32_t { return pointer_to_next_; }

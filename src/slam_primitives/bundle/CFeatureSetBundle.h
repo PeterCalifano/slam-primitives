@@ -41,6 +41,7 @@ namespace slam_primitives
         {
             uint32_t slot = findFreeSlot();
             SetID id = next_id_++;
+            set.setID(id);
 
             if (slot >= slots_.size())
             {

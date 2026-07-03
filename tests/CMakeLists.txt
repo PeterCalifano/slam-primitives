@@ -23,6 +23,7 @@ add_subdirectory(test_containers)
 add_subdirectory(test_feature_sets)
 add_subdirectory(test_bundle)
 add_subdirectory(test_covisibility)
+add_subdirectory(test_wrapped)
 add_subdirectory(test_fixtures)
 
 # Add tests to build

@@ -24,6 +24,7 @@ add_subdirectory(containers)
 add_subdirectory(feature_sets)
 add_subdirectory(bundle)
 add_subdirectory(covisibility)
+add_subdirectory(wrapped)
 #################
 
 # Set global # Export list of src files to parent scope

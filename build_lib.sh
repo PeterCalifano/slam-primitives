@@ -29,7 +29,7 @@ gtwrap_root=""
 wrap_update=true
 wrap_submodule_init=true
 wrap_branch="master"
-default_wrapper_interface="src/slam_primitives/wrapped/slam_primitives_wrapper.i"
+default_wrapper_interface="src/slam_primitives/wrapped/slam_primitives.i"
 cmake_defines=()
 
 detect_project_name() {
@@ -210,7 +210,7 @@ Notes:
     For CMake defines, use "-DVAR=ON" or "-D VAR=ON".
   * Wrapper rebuilds with "-r -p" or "-r -m" only work if the existing build
     directory was already configured with those wrappers enabled.
-  * The default wrapper interface file is "src/slam_primitives/wrapped/slam_primitives_wrapper.i". If it is
+  * The default wrapper interface file is "src/slam_primitives/wrapped/slam_primitives.i". If it is
     missing, wrapper generation is auto-disabled unless you pass a valid
     *_WRAPPER_INTERFACE_FILES or *_WRAPPER_AUTODISCOVER_INTERFACE_FILES option.
   * If no local wrap checkout is found, CMake tries find_package(gtwrap)

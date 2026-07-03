@@ -156,7 +156,7 @@ option(${GTWRAP_MATLAB_OPTION_NAME} "Build MATLAB wrapper" ${GTWRAP_BUILD_MATLAB
 
 if (NOT DEFINED ${GTWRAP_INTERFACE_OPTION_NAME})
   set(${GTWRAP_INTERFACE_OPTION_NAME}
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/slam_primitives/wrapped/slam_primitives_wrapper.i"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/slam_primitives/wrapped/slam_primitives.i"
       CACHE STRING
       "Ordered list of gtwrap interface files (.i). First entry is the top-level module file."
       FORCE)

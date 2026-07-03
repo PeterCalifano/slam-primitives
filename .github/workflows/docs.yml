@@ -8,6 +8,7 @@ on:
       - "master"
       - "main"
       - "dev_main"
+      - "develop"
     paths:
       - "src/**"
       - "cmake/**"
@@ -20,6 +21,7 @@ on:
       - "master"
       - "main"
       - "dev_main"
+      - "develop"
       - "dev*"
     paths:
       - "src/**"

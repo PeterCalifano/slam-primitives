@@ -17,6 +17,7 @@ on:
       - "master"
       - "main"
       - "dev_main"
+      - "develop"
     paths:
       - "src/**"
       - "examples/**"
@@ -33,6 +34,7 @@ on:
       - "master"
       - "main"
       - "dev_main"
+      - "develop"
       - "dev*"
     paths:
       - "src/**"
@@ -57,12 +59,16 @@ jobs:
     env:
       BUILD_DIR: build_ci
       BUILD_TYPE: RelWithDebInfo
-      INSTALL_DIR: ${{ runner.temp }}/slam-primitives-install
-      CONSUMER_DIR: ${{ runner.temp }}/slam-primitives-consumer
       CTEST_OUTPUT_ON_FAILURE: 1
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Initialize temporary paths
+        run: |
+          echo "INSTALL_DIR=${RUNNER_TEMP}/slam-primitives-install" >> "${GITHUB_ENV}"
+          echo "CONSUMER_DIR=${RUNNER_TEMP}/slam-primitives-consumer" >> "${GITHUB_ENV}"
+          rm -rf "${RUNNER_TEMP}/slam-primitives-install" "${RUNNER_TEMP}/slam-primitives-consumer"
 
       - name: Install dependencies
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.runner == 'github-hosted' }}

@@ -49,9 +49,11 @@ TEST_CASE("CFeatureSetBundle reuse freed slot", "[bundle]")
     Bundle b;
     auto id1 = b.allocate(Track(0));
     b.free(id1);
+    REQUIRE_FALSE(b.contains(id1));
 
     auto id2 = b.allocate(Track(0));
     REQUIRE(id2 != id1); // IDs are monotonic, never reused
+    REQUIRE(b.contains(id2));
     REQUIRE(b.activeCount() == 1);
 }
 

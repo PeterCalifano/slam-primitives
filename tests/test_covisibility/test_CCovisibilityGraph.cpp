@@ -152,6 +152,18 @@ TEST_CASE("CCovisibilityGraph query non-existent frame", "[covisibility]")
     REQUIRE(vis.empty());
 }
 
+TEST_CASE("CCovisibilityGraph add visibility to missing frame is no-op", "[covisibility]")
+{
+    Graph g;
+    g.pushFrame(1);
+
+    std::vector<SetID> features = {10, 20};
+    g.addVisibilityLinks(999, features);
+
+    REQUIRE(g.getVisibleFeatures(1).empty());
+    REQUIRE(g.frameCount() == 1);
+}
+
 TEST_CASE("CCovisibilityGraph getCovisibleFeatures non-existent frame", "[covisibility]")
 {
     Graph g;

@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 #include "slam_primitives/feature_sets/CFeatureSet.h"
 #include "slam_primitives/types/SFeatureLocation2D.h"
 
@@ -31,8 +32,8 @@ TEST_CASE("CFeatureSet add keypoints", "[feature_sets]")
 
     auto span = s.getKeypoints();
     REQUIRE(span.size() == 2);
-    REQUIRE(span[0].u == 1.0);
-    REQUIRE(span[1].v == 4.0);
+    REQUIRE(span[0].u == Catch::Approx(1.0));
+    REQUIRE(span[1].v == Catch::Approx(4.0));
 }
 
 TEST_CASE("CFeatureSet full signal on last add", "[feature_sets]")
@@ -52,6 +53,8 @@ TEST_CASE("CFeatureSet add beyond capacity is no-op", "[feature_sets]")
     for (int i = 0; i < 4; ++i) s.addKeypoint({static_cast<double>(i), 0.0});
     REQUIRE(s.addKeypoint({99.0, 99.0})); // still returns full
     REQUIRE(s.size() == 4); // no growth
+    REQUIRE(s.getKeypoint(3).u == Catch::Approx(3.0));
+    REQUIRE_THROWS_AS(s.getKeypoint(4), std::out_of_range);
 }
 
 TEST_CASE("CFeatureSet getKeypoint valid index", "[feature_sets]")
@@ -59,8 +62,8 @@ TEST_CASE("CFeatureSet getKeypoint valid index", "[feature_sets]")
     Set s(1);
     s.addKeypoint({5.0, 6.0});
     auto& kp = s.getKeypoint(0);
-    REQUIRE(kp.u == 5.0);
-    REQUIRE(kp.v == 6.0);
+    REQUIRE(kp.u == Catch::Approx(5.0));
+    REQUIRE(kp.v == Catch::Approx(6.0));
 }
 
 TEST_CASE("CFeatureSet getKeypoint out of range", "[feature_sets]")

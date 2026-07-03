@@ -27,7 +27,9 @@ profiling=false
 toolchain_file=""
 gtwrap_root=""
 wrap_update=true
+wrap_submodule_init=true
 wrap_branch="master"
+default_wrapper_interface="src/slam_primitives/wrapped/slam_primitives.i"
 cmake_defines=()
 
 detect_project_name() {
@@ -42,6 +44,66 @@ detect_project_name() {
   [[ -n "$_name" ]] && printf '%s\n' "$_name"
 }
 
+has_wrapper_interface_override() {
+  local _define=""
+  for _define in "${cmake_defines[@]}"; do
+    case "$_define" in
+      -D*_WRAPPER_INTERFACE_FILES=*)
+        return 0
+        ;;
+      -D*_WRAPPER_AUTODISCOVER_INTERFACE_FILES=ON|-D*_WRAPPER_AUTODISCOVER_INTERFACE_FILES=TRUE|-D*_WRAPPER_AUTODISCOVER_INTERFACE_FILES=1|-D*_WRAPPER_AUTODISCOVER_INTERFACE_FILES=on|-D*_WRAPPER_AUTODISCOVER_INTERFACE_FILES=true)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+cache_get_value() {
+  local _cache_file="$1"
+  local _cache_key="$2"
+  [[ -f "$_cache_file" ]] || return 1
+  awk -v key="${_cache_key}:" 'index($0, key) == 1 { sub(/^[^=]*=/, "", $0); print; exit }' "$_cache_file"
+}
+
+warn_python_wrapper_absent() {
+  local _cache_file="$1"
+  local _python_target="$2"
+  local _wrapper_option=""
+  local _disable_reason=""
+  local _interface_files=""
+
+  warn "Python wrapper requested but target '${_python_target}' is not defined in '${buildpath}'."
+
+  if [[ "$rebuild_only" == true ]]; then
+    warn "--rebuild-only reused the existing CMake cache. Re-run without -r if this build directory was not configured with Python wrapping."
+  fi
+
+  if [[ -f "$_cache_file" && -n "$project_name" ]]; then
+    _wrapper_option="$(cache_get_value "$_cache_file" "${project_name}_BUILD_PYTHON_WRAPPER" || true)"
+    _disable_reason="$(cache_get_value "$_cache_file" "${project_name}_WRAPPER_DISABLE_REASON" || true)"
+    _interface_files="$(cache_get_value "$_cache_file" "${project_name}_WRAPPER_INTERFACE_FILES_EFFECTIVE" || true)"
+
+    if [[ "$_wrapper_option" == "OFF" ]]; then
+      warn "CMake cache shows '${project_name}_BUILD_PYTHON_WRAPPER=OFF'."
+    fi
+
+    if [[ "$_disable_reason" == "missing_or_invalid_interface_files" ]]; then
+      if [[ -n "$_interface_files" ]]; then
+        warn "CMake auto-disabled wrappers because no valid interface files were configured. Current configured value: '${_interface_files}'."
+      else
+        warn "CMake auto-disabled wrappers because no valid interface files were configured."
+      fi
+    fi
+  fi
+
+  if [[ -n "$project_name" ]]; then
+    warn "Check '${default_wrapper_interface}' or pass -D${project_name}_WRAPPER_INTERFACE_FILES=<file> / -D${project_name}_WRAPPER_AUTODISCOVER_INTERFACE_FILES=ON, then re-run configure without -r."
+  else
+    warn "Check '${default_wrapper_interface}' or pass the project-specific *_WRAPPER_INTERFACE_FILES / *_WRAPPER_AUTODISCOVER_INTERFACE_FILES CMake option, then re-run configure without -r."
+  fi
+}
+
 detect_wrap_root() {
   local _candidate
   for _candidate in "./wrap" "./lib/wrap" "../wrap"; do
@@ -51,35 +113,6 @@ detect_wrap_root() {
     fi
   done
   return 1
-}
-
-init_wrap_submodule_if_needed() {
-  local _project_root="$1"
-  local _wrap_rel=""
-
-  if [[ ! -f "${_project_root}/.gitmodules" ]]; then
-    return 0
-  fi
-  if ! git -C "${_project_root}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    return 0
-  fi
-
-  if grep -Eq '^[[:space:]]*path[[:space:]]*=[[:space:]]*lib/wrap[[:space:]]*$' "${_project_root}/.gitmodules"; then
-    _wrap_rel="lib/wrap"
-  elif grep -Eq '^[[:space:]]*path[[:space:]]*=[[:space:]]*wrap[[:space:]]*$' "${_project_root}/.gitmodules"; then
-    _wrap_rel="wrap"
-  fi
-
-  if [[ -z "${_wrap_rel}" ]]; then
-    return 0
-  fi
-  if [[ -f "${_project_root}/${_wrap_rel}/cmake/PybindWrap.cmake" ]]; then
-    return 0
-  fi
-
-  info "Initializing wrap submodule (${_wrap_rel})..."
-  git -C "${_project_root}" submodule sync --recursive
-  git -C "${_project_root}" submodule update --init --recursive "${_wrap_rel}"
 }
 
 update_wrap_checkout() {
@@ -150,12 +183,15 @@ Options:
       --gtwrap-root <dir>     Path to wrap checkout root for gtwrap
                               (maps to -D<project>_GTWRAP_ROOT_DIR=<dir>)
       --no-wrap-update        Disable auto-update of local wrap checkout to latest master
+      --no-wrap-submodule-init
+                              Disable wrap submodule initialization fallback
   -i, --install               Run "install" target after tests
   -N, --ninja-build           Use Ninja generator (requires `ninja`)
   -n, --no-optim              Set -DNO_OPTIMIZATION=ON in the CMake cache
       --profile               Enable profiling build (-DENABLE_PROFILING=ON)
       --toolchain <file>      Pass CMake toolchain file (-DCMAKE_TOOLCHAIN_FILE=<file>)
       --clean                 Delete build dir before configuring
+                              (recommended for cross-machine/cache portability checks)
   -h, --help                  Show this help and exit
 
 Examples:
@@ -172,6 +208,13 @@ Examples:
 Notes:
   * Short options with arguments use a separate value: "-B build", "-j 8".
     For CMake defines, use "-DVAR=ON" or "-D VAR=ON".
+  * Wrapper rebuilds with "-r -p" or "-r -m" only work if the existing build
+    directory was already configured with those wrappers enabled.
+  * The default wrapper interface file is "src/slam_primitives/wrapped/slam_primitives.i". If it is
+    missing, wrapper generation is auto-disabled unless you pass a valid
+    *_WRAPPER_INTERFACE_FILES or *_WRAPPER_AUTODISCOVER_INTERFACE_FILES option.
+  * If no local wrap checkout is found, CMake tries find_package(gtwrap)
+    before optionally initializing a declared wrap submodule.
   * This script requires GNU getopt (standard on Debian/Ubuntu).
 USAGE
 }
@@ -188,7 +231,7 @@ if ! command -v getopt > /dev/null 2>&1; then
 fi
 
 OPTIONS=B:j:rt:c:f:D:pmhNni
-LONGOPTIONS=buildpath:,jobs:,rebuild-only,type:,type-build:,checks,flagsCXX:,define:,python-wrap,matlab-wrap,gtwrap-root:,no-wrap-update,help,ninja-build,no-optim,skip-tests,clean,install,profile,toolchain:
+LONGOPTIONS=buildpath:,jobs:,rebuild-only,type:,type-build:,checks,flagsCXX:,define:,python-wrap,matlab-wrap,gtwrap-root:,no-wrap-update,no-wrap-submodule-init,help,ninja-build,no-optim,skip-tests,clean,install,profile,toolchain:
 PARSED=$(getopt -o "$OPTIONS" -l "$LONGOPTIONS" -- "$@") || { usage; exit 2; }
 eval set -- "$PARSED"
 
@@ -206,6 +249,7 @@ while true; do
     -m|--matlab-wrap)     matlab_wrap=true; shift ;;
         --gtwrap-root)    gtwrap_root="$2"; shift 2 ;;
         --no-wrap-update) wrap_update=false; shift ;;
+        --no-wrap-submodule-init) wrap_submodule_init=false; shift ;;
     -i|--install)         install=true;    shift ;;
     -N|--ninja-build)     use_ninja=true;  shift ;;
     -n|--no-optim)        no_optim=true;   shift ;;
@@ -247,9 +291,25 @@ if [[ -n "$gtwrap_root" && ! -d "$gtwrap_root" ]]; then
 fi
 
 project_name="$(detect_project_name || true)"
+wrapper_interface_override=false
+prepare_wrap_checkout=false
 
-if [[ "$python_wrap" == true || "$matlab_wrap" == true ]]; then
-  init_wrap_submodule_if_needed "$PWD"
+if [[ "$rebuild_only" == false && ( "$python_wrap" == true || "$matlab_wrap" == true ) ]]; then
+  if has_wrapper_interface_override; then
+    wrapper_interface_override=true
+    prepare_wrap_checkout=true
+  elif [[ -f "${default_wrapper_interface}" ]]; then
+    prepare_wrap_checkout=true
+  else
+    if [[ -n "$project_name" ]]; then
+      warn "Default wrapper interface file '${default_wrapper_interface}' is missing. Wrappers will be auto-disabled unless you pass -D${project_name}_WRAPPER_INTERFACE_FILES=<file> or -D${project_name}_WRAPPER_AUTODISCOVER_INTERFACE_FILES=ON."
+    else
+      warn "Default wrapper interface file '${default_wrapper_interface}' is missing. Wrappers will be auto-disabled unless you pass the project-specific *_WRAPPER_INTERFACE_FILES or *_WRAPPER_AUTODISCOVER_INTERFACE_FILES CMake option."
+    fi
+  fi
+fi
+
+if [[ "$rebuild_only" == false && "$prepare_wrap_checkout" == true ]]; then
   if [[ -z "$gtwrap_root" ]]; then
     gtwrap_root="$(detect_wrap_root || true)"
   fi
@@ -263,8 +323,11 @@ command -v cmake >/dev/null 2>&1 || die "cmake not found"
 if [[ "$use_ninja" == true ]]; then
   command -v ninja >/dev/null 2>&1 || die "Requested Ninja but 'ninja' not found"
 fi
+cmake_version_line="$(cmake --version | head -n1)"
+cmake_version="${cmake_version_line#cmake version }"
 
 # Print info
+info "CMake version      : ${cmake_version}"
 info "Buildpath          : $buildpath"
 info "Jobs               : $jobs"
 info "Build Type         : $cmake_bt"
@@ -275,11 +338,16 @@ info "MATLAB wrapper     : $matlab_wrap"
 info "Detected project   : ${project_name:-<unknown>}"
 info "GTWRAP root        : ${gtwrap_root:-<auto>}"
 info "GTWRAP auto-update : $wrap_update (branch: $wrap_branch)"
+info "GTWRAP submodule   : $wrap_submodule_init"
 info "Generator          : $([[ "$use_ninja" == true ]] && echo Ninja || echo 'Unix Makefiles')"
 info "Profiling build    : $profiling"
 info "Toolchain file     : ${toolchain_file:-<none>}"
 info "Run tests          : $run_tests"
 info "Install after build: $install"
+
+if [[ "$rebuild_only" == false && -d "$buildpath" && "$clean_first" == false ]]; then
+  warn "Reusing existing build dir '$buildpath'. Use --clean for cross-machine/config portability checks."
+fi
 
 sleep 0.2
 
@@ -294,8 +362,8 @@ if [[ "$rebuild_only" == false ]]; then
     -S .
     -B "$buildpath"
     "-DCMAKE_BUILD_TYPE=$cmake_bt"
-    "-DCMAKE_CXX_FLAGS=$CXX_FLAGS"
-    "-DCMAKE_C_FLAGS=$CXX_FLAGS"
+    "-DEXTRA_CXX_FLAGS=$CXX_FLAGS"
+    "-DEXTRA_C_FLAGS=$CXX_FLAGS"
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
   )
   [[ "$use_ninja"  == true ]] && cmake_args+=( -G Ninja )
@@ -314,15 +382,22 @@ if [[ "$rebuild_only" == false ]]; then
     fi
   fi
   if [[ -n "$gtwrap_root" ]]; then
-    cmake_args+=( "-DGTWRAP_ROOT_DIR=$gtwrap_root" )
-    [[ -n "$project_name" ]] && cmake_args+=( "-D${project_name}_GTWRAP_ROOT_DIR=$gtwrap_root" )
+    if [[ -n "$project_name" ]]; then
+      cmake_args+=( "-D${project_name}_GTWRAP_ROOT_DIR=$gtwrap_root" )
+    else
+      cmake_args+=( "-DGTWRAP_ROOT_DIR=$gtwrap_root" )
+    fi
   fi
-  if [[ "$python_wrap" == true || "$matlab_wrap" == true ]]; then
-    cmake_args+=( "-DGTWRAP_BRANCH=$wrap_branch" )
+  if [[ "$prepare_wrap_checkout" == true ]]; then
     if [[ "$wrap_update" == true ]]; then
-      cmake_args+=( -DGTWRAP_SYNC_TO_MASTER=ON )
+      cmake_args+=( "-DGTWRAP_BRANCH=$wrap_branch" -DGTWRAP_SYNC_TO_MASTER=ON )
     else
       cmake_args+=( -DGTWRAP_SYNC_TO_MASTER=OFF )
+    fi
+    if [[ "$wrap_submodule_init" == true ]]; then
+      cmake_args+=( -DGTWRAP_INIT_SUBMODULE_IF_MISSING=ON )
+    else
+      cmake_args+=( -DGTWRAP_INIT_SUBMODULE_IF_MISSING=OFF )
     fi
   fi
   [[ "$no_optim"   == true ]] && cmake_args+=( -DNO_OPTIMIZATION=ON )
@@ -341,14 +416,15 @@ info "\nBuilding..."
 cmake --build "$buildpath" --parallel "$jobs"
 
 if [[ "$python_wrap" == true && -n "$project_name" ]]; then
-  python_target="${project_name}_py"
-  if cmake --build "$buildpath" --target help 2>/dev/null | rg -q --fixed-strings "${python_target}"; then
+  cache_file="${buildpath}/CMakeCache.txt"
+  python_target="$(cache_get_value "$cache_file" "${project_name}_PYTHON_WRAPPER_TARGET" || true)"
+  [[ -z "$python_target" ]] && python_target="${project_name}_py"
+  target_help_output="$(cmake --build "$buildpath" --target help 2>/dev/null || true)"
+  if awk -v target="${python_target}" '$1 == "..." && $2 == target { found=1; exit } END { exit(found ? 0 : 1) }' <<<"${target_help_output}"; then
     info "Ensuring Python wrapper target '${python_target}' is built..."
     cmake --build "$buildpath" --parallel "$jobs" --target "${python_target}"
   else
-    warn "Python wrapper requested but target '${python_target}' is not defined in '${buildpath}'."
-    warn "Likely causes: configured with --rebuild-only on a cache without wrappers, wrapper auto-disabled, or missing python package metadata."
-    warn "Re-run configure (without -r) and verify python/${project_name}/ plus python/pyproject.toml.in exist."
+    warn_python_wrapper_absent "$cache_file" "${python_target}"
   fi
 fi
 

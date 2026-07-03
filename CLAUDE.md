@@ -1,74 +1,67 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working in `slam-primitives`.
+Use `AGENTS.md` as the concise contributor guide; this file adds agent-facing implementation context.
+
+## Agent Operating Rules
+
+Before context compaction, write the active task state, decisions, blockers, and verification status to `CONTEXT.md`. After compaction, reread `AGENTS.md` and `CONTEXT.md` before continuing. Do not overwrite unrelated local or staged changes. This repository often has active work in progress.
+
+Use `/home/peterc/devDir/SLAM-repos/gtsam_spaceNav` as the local C++ reference for style and development quality. Prefer modern C++ in the Jason Turner sense: clear ownership, RAII, const-correct APIs, compile-time checks, no avoidable raw owning pointers, no macro metaprogramming when templates or concepts work, and warnings treated as design feedback.
 
 ## Project Overview
 
-`slam-primitives` is a **header-only C++20 library** providing foundational data structures for Visual-SLAM frontends. It handles keypoint storage, temporal feature tracking, pool-based bundle management, and sliding-window covisibility analysis. Required dependency: Eigen3 (>= 3.4). Optional: CUDA 12+, OptiX, OpenGL, TBB, OpenMP.
+`slam-primitives` is a header-only C++20 library for Visual-SLAM frontend primitives. It provides fixed-capacity keypoint storage, temporal feature tracks, bundle allocation, circular buffers, and sliding-window covisibility analysis. Eigen3 is required. CUDA 12+, OpenGL, oneTBB, OpenMP, Doxygen, and gtwrap/Python bindings are optional build surfaces.
 
-## Build Commands
+## Build and Test Commands
 
 ```bash
-./build_lib.sh                          # Default: RelWithDebInfo, output to ./build
-./build_lib.sh -t debug -j 8            # Debug build, 8 parallel jobs
-./build_lib.sh -t release -i            # Release build + install
-./build_lib.sh -N                       # Use Ninja generator
-./build_lib.sh --clean                  # Clean rebuild
-./build_lib.sh -D ENABLE_CUDA=ON        # Enable CUDA support
-./build_lib.sh -r                       # Rebuild only (skip CMake configure)
+./build_lib.sh
+./build_lib.sh -t debug -j 8
+./build_lib.sh -N -i
+./build_lib.sh --clean
+./build_lib.sh -D ENABLE_CUDA=ON
 ```
 
-**Running tests:**
+Manual CMake flow:
+
 ```bash
-cd build && ctest --output-on-failure
-ctest --output-on-failure -R <test_name>   # Run a single test by name
+cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
 ```
 
-**Manual CMake:**
+Build docs when configured:
+
 ```bash
-cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build build -j$(nproc)
+cmake --build build --target doc
 ```
+
+Use `-DCPU_ENABLE_NATIVE_TUNING=OFF` for portable CI or redistributable binaries.
 
 ## Architecture
 
-### Library Modules (all header-only under `src/slam_primitives/`)
+Public headers live under `src/slam_primitives/`:
 
-- **types/** — Core type aliases (`SetID`, `FrameID`), C++20 concepts (`FeatureLocation`, `FeatureSetLike`), labeling policies (`SLabelingDisabled`/`SLabelingEnabled<N>`), `SFeatureLocation2D`, `ESetType` enum, `SLidarEnhancedData`
-- **feature_sets/** — `CFeatureSet<LocT, MAX_SIZE>`: fixed-capacity ordered keypoint collection for a single frame. `CFeatureTrack<LocT, MAX_LENGTH, LabelPolicyT>`: extends CFeatureSet with temporal frame indexing, manual/auto termination, optional LiDAR data, and configurable labeling
-- **bundle/** — `CFeatureSetBundle<SetT, MAX_SLOTS>`: pool allocator for feature sets/tracks with O(1) lookup by SetID via bitset occupancy + unordered_map indexing
-- **containers/** — `CCircularBuffer<T, N>`: fixed-capacity ring buffer with O(1) front/back access and iterator support
-- **covisibility/** — `CCovisibilityGraph<MAX_FRAMES>`: sliding-window covisibility graph using circular buffer; supports pairwise intersection queries and frame cleanup
+- `types/`: type aliases, concepts, labeling policies, `SFeatureLocation2D`, `ESetType`, LiDAR metadata.
+- `containers/`: fixed-capacity `CCircularBuffer`.
+- `feature_sets/`: `CFeatureSet` and `CFeatureTrack`.
+- `bundle/`: `CFeatureSetBundle` pool allocation and SetID lookup.
+- `covisibility/`: `CCovisibilityGraph` sliding-window graph utilities.
+- `wrapped/`: optional gtwrap/Python facade and interface files.
 
-All classes use **compile-time capacity templates** for predictable stack allocation and zero-overhead abstraction.
+The library target is an INTERFACE CMake target. Keep new core code header-only unless a real build-boundary reason exists. Examples and downstream consumer checks live in `examples/`. Doxygen sources live in `doc/`. Python package templates live in `python/` and import as `slam_primitives`.
 
-### Test Structure
+## Coding Conventions
 
-Tests use Catch2 (auto-fetched if not found) under `tests/`, one test per component:
+Use C++20 for new code. Prefer concepts over SFINAE, explicit APIs over clever inference, and compile-time capacity templates where that matches existing containers. Match existing names: classes use `C...`, plain data types use `S...`, enums use `E...`, and methods use lower camel case such as `getTrackLength`.
 
-- `test_types/test_concepts_and_policies.cpp`
-- `test_feature_sets/test_CFeatureSet.cpp`, `test_CFeatureTrack.cpp`
-- `test_bundle/test_CFeatureSetBundle.cpp`
-- `test_containers/test_CCircularBuffer.cpp`
-- `test_covisibility/test_CCovisibilityGraph.cpp`
-- `test_fixtures/test_fixtures.h` — shared `TestTrack` and `TestBundle` type aliases
+Python code requires Python >= 3.12, complete type hints, dataclasses instead of ad-hoc dicts, and enums instead of multi-value literals. New public classes or functions should include a runnable example with expected output when practical.
 
-Test targets are created via the `add_tests()` macro from `cmake/cmake_utils.cmake`, which discovers `test*.cpp` files in each subdirectory and registers them with Catch2's test discovery.
+## Testing Guidance
 
-### Build System (cmake/)
+Tests use Catch2 and mirror module layout under `tests/test_*`. Add focused tests near the affected component, naming files `test_<TypeOrFeature>.cpp`. Use descriptive `TEST_CASE` names and tags such as `[feature_sets]`. For wrapper changes, include CTest coverage plus import-level validation. Prefer a narrow regression test before broad integration coverage.
 
-Modular CMake with `Handle*.cmake` modules per dependency, creating INTERFACE targets namespaced via `LIB_NAMESPACE`. The library itself is an INTERFACE target (header-only: no .cpp/.cu sources compiled).
+## Commit and PR Guidance
 
-Key CMake options: `ENABLE_CUDA`, `ENABLE_OPTIX`, `ENABLE_OPENGL`, `ENABLE_TBB`, `ENABLE_TESTS` (ON by default), `SANITIZE_BUILD`, `CPU_ENABLE_NATIVE_TUNING` (ON by default for optimized builds).
-
-### Consumer Pattern
-
-`examples/template_consumer_project/` demonstrates using this library via `find_package(slam-primitives)` and linking `slam-primitives::slam-primitives`.
-
-## Conventions
-
-- Default build type is **RelWithDebInfo** (stricter warnings including `-Wconversion`, `-Wnull-dereference`, `-Wfloat-equal`, `-Wnon-virtual-dtor`)
-- Version format: `MAJOR.MINOR.PATCH+<commit_hash>`, derived from git tags matching `v*.*.*`
-- `ACHTUNG!` prefix in comments marks critical warnings
-- Test file naming: `test_<ClassName>.cpp`
-- All library code is header-only templates under `src/slam_primitives/`
+Do not commit unless explicitly asked. Existing history uses short imperative messages, sometimes with scoped markers such as `[MAJOR]`. Keep proposed commits behaviorally coherent: API/library, build system, wrapper, docs, and tests should be separable when practical. PR summaries should list behavior changes, validation commands, touched CMake options, and wrapper/docs impacts.

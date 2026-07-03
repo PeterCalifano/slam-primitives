@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 #include "slam_primitives/feature_sets/CFeatureTrack.h"
 #include "slam_primitives/types/SFeatureLocation2D.h"
 #include "slam_primitives/types/labeling_policies.h"
@@ -12,9 +13,12 @@ TEST_CASE("CFeatureTrack create and add keypoints", "[feature_sets]")
     Track t(10);
     REQUIRE(t.getID() == 10);
     REQUIRE(t.getTrackLength() == 0);
+    REQUIRE(t.getFrameIDs().empty());
     REQUIRE_FALSE(t.isTerminated());
 
     REQUIRE_FALSE(t.addKeypointToTrack({1.0, 2.0}, 100));
+    REQUIRE(t.getTrackLength() == 1);
+    REQUIRE(t.getFrameIDs().size() == 1);
     REQUIRE_FALSE(t.addKeypointToTrack({3.0, 4.0}, 101));
     REQUIRE(t.getTrackLength() == 2);
 }
@@ -28,6 +32,9 @@ TEST_CASE("CFeatureTrack termination at MAX_LENGTH", "[feature_sets]")
     REQUIRE(t.addKeypointToTrack({0, 0}, 3)); // 4th = MAX_LENGTH
     REQUIRE(t.isTerminated());
     REQUIRE(t.getTrackLength() == 4);
+    REQUIRE(t.addKeypointToTrack({9, 9}, 4));
+    REQUIRE(t.getTrackLength() == 4);
+    REQUIRE_FALSE(t.getKeypointAtFrame(4).has_value());
 }
 
 TEST_CASE("CFeatureTrack manual terminate", "[feature_sets]")
@@ -69,8 +76,8 @@ TEST_CASE("CFeatureTrack getKeypointAtFrame existing", "[feature_sets]")
 
     auto kp = t.getKeypointAtFrame(42);
     REQUIRE(kp.has_value());
-    REQUIRE(kp->u == 5.0);
-    REQUIRE(kp->v == 6.0);
+    REQUIRE(kp->u == Catch::Approx(5.0));
+    REQUIRE(kp->v == Catch::Approx(6.0));
 }
 
 TEST_CASE("CFeatureTrack getKeypointAtFrame missing", "[feature_sets]")
@@ -87,7 +94,7 @@ TEST_CASE("CFeatureTrack labeling disabled no overhead", "[feature_sets]")
     using TrackDisabled = CFeatureTrack<SFeatureLocation2D, 4, SLabelingDisabled>;
     // Just verify it compiles and labeling data is accessible
     TrackDisabled t(1);
-    REQUIRE_FALSE(TrackDisabled::capacity() == 0);
+    REQUIRE(TrackDisabled::capacity() > 0);
     auto& label = t.getLabelingData();
     REQUIRE_FALSE(label.has_labeling);
 }
@@ -100,7 +107,7 @@ TEST_CASE("CFeatureTrack labeling enabled stores data", "[feature_sets]")
     REQUIRE(label.has_labeling);
 
     label.labeled_keypoints[0] = {10.0, 20.0};
-    REQUIRE(t.getLabelingData().labeled_keypoints[0].u == 10.0);
+    REQUIRE(t.getLabelingData().labeled_keypoints[0].u == Catch::Approx(10.0));
 }
 
 TEST_CASE("CFeatureTrack lidar augmentation", "[feature_sets]")
@@ -111,22 +118,7 @@ TEST_CASE("CFeatureTrack lidar augmentation", "[feature_sets]")
     SLidarEnhancedData lidar{100.0, 0.5, 0.3};
     t.setLidar(lidar);
     REQUIRE(t.getLidar().has_value());
-    REQUIRE(t.getLidar()->range == 100.0);
-    REQUIRE(t.getLidar()->azimuth == 0.5);
-    REQUIRE(t.getLidar()->elevation == 0.3);
-}
-
-TEST_CASE("CFeatureTrack length 1", "[feature_sets]")
-{
-    Track t(1);
-    t.addKeypointToTrack({1.0, 1.0}, 0);
-    REQUIRE(t.getTrackLength() == 1);
-    REQUIRE(t.getFrameIDs().size() == 1);
-}
-
-TEST_CASE("CFeatureTrack just constructed length 0", "[feature_sets]")
-{
-    Track t(1);
-    REQUIRE(t.getTrackLength() == 0);
-    REQUIRE(t.getFrameIDs().empty());
+    REQUIRE(t.getLidar()->range == Catch::Approx(100.0));
+    REQUIRE(t.getLidar()->azimuth == Catch::Approx(0.5));
+    REQUIRE(t.getLidar()->elevation == Catch::Approx(0.3));
 }

@@ -104,7 +104,7 @@ TEST_CASE("CCovisibilityGraph ring buffer wrap-around", "[covisibility]")
     REQUIRE(vis5[0] == 200);
 }
 
-TEST_CASE("CCovisibilityGraph cleanup removes stale features", "[covisibility]")
+TEST_CASE("CCovisibilityGraph clearInactiveFeatures removes stale features", "[covisibility]")
 {
     Graph g;
     g.pushFrame(1);
@@ -113,14 +113,14 @@ TEST_CASE("CCovisibilityGraph cleanup removes stale features", "[covisibility]")
 
     // Only feature 20 is still active
     std::vector<SetID> active = {20};
-    g.cleanup(active);
+    g.clearInactiveFeatures(active);
 
     auto vis = g.getVisibleFeatures(1);
     REQUIRE(vis.size() == 1);
     REQUIRE(vis[0] == 20);
 }
 
-TEST_CASE("CCovisibilityGraph cleanup with empty active set", "[covisibility]")
+TEST_CASE("CCovisibilityGraph clearInactiveFeatures with empty active set", "[covisibility]")
 {
     Graph g;
     g.pushFrame(1);
@@ -128,7 +128,7 @@ TEST_CASE("CCovisibilityGraph cleanup with empty active set", "[covisibility]")
     g.addVisibilityLinks(1, features);
 
     std::vector<SetID> empty;
-    g.cleanup(empty);
+    g.clearInactiveFeatures(empty);
 
     auto vis = g.getVisibleFeatures(1);
     REQUIRE(vis.empty());
@@ -150,6 +150,18 @@ TEST_CASE("CCovisibilityGraph query non-existent frame", "[covisibility]")
 
     auto vis = g.getVisibleFeatures(999);
     REQUIRE(vis.empty());
+}
+
+TEST_CASE("CCovisibilityGraph add visibility to missing frame is no-op", "[covisibility]")
+{
+    Graph g;
+    g.pushFrame(1);
+
+    std::vector<SetID> features = {10, 20};
+    g.addVisibilityLinks(999, features);
+
+    REQUIRE(g.getVisibleFeatures(1).empty());
+    REQUIRE(g.frameCount() == 1);
 }
 
 TEST_CASE("CCovisibilityGraph getCovisibleFeatures non-existent frame", "[covisibility]")

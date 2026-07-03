@@ -20,8 +20,8 @@ namespace slam_primitives
     /// reverse index from feature ID to frame slots.
     ///
     /// When the window is full, pushFrame() evicts the oldest frame and its
-    /// index entries. cleanup() removes stale feature IDs that are no longer
-    /// active in the bundle.
+    /// index entries. clearInactiveFeatures() removes stale feature IDs that are
+    /// no longer active in the bundle.
     ///
     /// @tparam MAX_FRAMES  Sliding window size (number of frames retained).
     template <uint32_t MAX_FRAMES = 64>
@@ -148,7 +148,7 @@ namespace slam_primitives
         /// Prunes stale feature IDs from all frame visibility lists, then rebuilds
         /// the reverse index feature_to_frame_slots_.
         /// @param active_feature_ids Feature IDs that should be retained.
-        void cleanup(std::span<const SetID> active_feature_ids)
+        void clearInactiveFeatures(std::span<const SetID> active_feature_ids)
         {
             // Build active set for fast lookup
             std::unordered_map<SetID, bool> active_set;

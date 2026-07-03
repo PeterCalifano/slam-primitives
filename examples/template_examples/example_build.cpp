@@ -1,34 +1,23 @@
+#include <slam_primitives/bundle/CFeatureSetBundle.h>
+#include <slam_primitives/feature_sets/CFeatureTrack.h>
+#include <slam_primitives/types/SFeatureLocation2D.h>
+
 #include <iostream>
-
-#include <template_src/placeholder.h>
-
-#ifndef SPDLOG_UTILS_ENABLED
-#define SPDLOG_UTILS_ENABLED 0
-#endif
-
-#if SPDLOG_UTILS_ENABLED
-#include <utils/logging/SpdlogUtils.h>
-#endif
 
 int main()
 {
-#if SPDLOG_UTILS_ENABLED
-    if (!spdlog_utils::InitializeLogLevelFromEnvironment())
-    {
-        spdlog_utils::ConfigureDefaultLogging();
-    }
+    using namespace slam_primitives;
 
-    auto objLogger_ = spdlog_utils::GetLogger("example_build");
-    objLogger_->info("Hello, World! This is an example file for the template.");
-    placeholder::placeholder_fcn();
-#else
-    std::cout << "Hello, World! This is an example file for the template." << std::endl;
-    placeholder::placeholder_fcn();
-#endif
+    using Track = CFeatureTrack<SFeatureLocation2D, 64>;
+    CFeatureSetBundle<Track, 32> objBundle_;
 
-    // Example output with spdlog enabled:
-    // [12:34:56] [info] [example_build] Hello, World! This is an example file for the template.
-    // [12:34:56] [info] [placeholder] Hello, World! I'm a placeholder function, yuppy.
+    Track objTrack_(0);
+    objTrack_.addKeypointToTrack({100.0, 200.0}, 0);
+    objTrack_.addKeypointToTrack({101.5, 201.2}, 1);
+
+    const SetID uiTrackId_ = objBundle_.allocate(std::move(objTrack_));
+    std::cout << "Allocated track with SetID=" << uiTrackId_
+              << ", length=" << objBundle_.get(uiTrackId_).getTrackLength() << "\n";
 
     return 0;
 }

@@ -34,13 +34,10 @@ if (ENABLE_TESTS)
     find_package(Git QUIET)
 
     if(NOT Git_FOUND)
-      # Git not found, disable tests instead of failing
-      message(WARNING "Git not found; cannot fetch Catch2. Tests will be disabled.")
-      set(ENABLE_TESTS OFF CACHE BOOL "Build and run tests" FORCE)
+      message(WARNING "Git not found; cannot fetch Catch2. Catch2 tests will be disabled.")
     elseif(EXISTS "${_catch2_local_dir}")
       # Local Catch2 directory exists but is not usable
-      message(WARNING "Local Catch2 directory exists but is not usable: ${_catch2_local_dir}. Tests will be disabled.")
-      set(ENABLE_TESTS OFF CACHE BOOL "Build and run tests" FORCE)
+      message(WARNING "Local Catch2 directory exists but is not usable: ${_catch2_local_dir}. Catch2 tests will be disabled.")
     else()
       # Try fetching it by cloning into lib/
 
@@ -68,19 +65,16 @@ if (ENABLE_TESTS)
             set(Catch2_FOUND TRUE)
           endif() # All went OK
         else()
-          message(WARNING "Failed to clone Catch2 into lib/. Tests will be disabled.") # Fallback to disabling tests
-          set(ENABLE_TESTS OFF CACHE BOOL "Build and run tests" FORCE)
+          message(WARNING "Failed to clone Catch2 into lib/. Catch2 tests will be disabled.")
         endif()
 
       else()
         # Network access fails
-        message(WARNING "Cannot reach GitHub (no network or blocked). Catch2 not available; tests will be disabled.")
-        set(ENABLE_TESTS OFF CACHE BOOL "Build and run tests" FORCE)
+        message(WARNING "Cannot reach GitHub (no network or blocked). Catch2 tests will be disabled.")
       endif()
     endif()
   elseif(NOT Catch2_FOUND AND NOT ENABLE_FETCH_CATCH2)
-    message(STATUS "Catch2 not found and ENABLE_FETCH_CATCH2=OFF. Tests will be disabled.")
-    set(ENABLE_TESTS OFF CACHE BOOL "Build and run tests" FORCE) # Disable tests since Catch2 not available and auto-fetch not enabled
+    message(STATUS "Catch2 not found and ENABLE_FETCH_CATCH2=OFF. Catch2 tests will be disabled.")
   endif()
 
   # Only add tests if we really have Catch2 (either found or fetched)
@@ -95,7 +89,7 @@ if (ENABLE_TESTS)
     # add_executable(my_tests ...)
     # target_link_libraries(my_tests PRIVATE Catch2::Catch2WithMain)
   else()
-    message(STATUS "Tests are disabled (Catch2 not available or ENABLE_TESTS=OFF).")
+    message(STATUS "Catch2 tests are disabled (Catch2 not available or ENABLE_TESTS=OFF).")
   endif()
 else()
   message(STATUS "Tests are disabled and won't be built (ENABLE_TESTS=OFF).")

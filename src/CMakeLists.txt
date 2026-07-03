@@ -6,7 +6,6 @@ configure_file(config.h.in config.h)
 # Add src files to library
 set(SRC_PATTERN "*.cpp; *.cu")
 file(GLOB srcLibFiles RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${SRC_PATTERN})
-file(GLOB srcCudaFilesToPTX "*.ptx.cu")
 
 # Get current folder name
 get_filename_component(CURRENT_FOLDER_NAME ${CMAKE_CURRENT_SOURCE_DIR} NAME)
@@ -18,7 +17,7 @@ add_subdirectory(slam_primitives)
 
 
 
-if (BUILD_AS_MAIN_PROJECT)
+if (BUILD_AS_MAIN_PROJECT AND ${${BUILD_PROGRAMS_OPTION_NAME}})
   message(STATUS "Adding module: bin")
   add_subdirectory(bin)
 endif()
@@ -73,33 +72,6 @@ endif()
 # If need to add other files after add_library, use:
 #target_sources(${lib_name} SHARED ${srcLibFiles})
 
-if ( ENABLE_OPTIX )
-  if (lib_is_header_only)
-    message(FATAL_ERROR "ENABLE_OPTIX requires at least one compilable source file in src/ to embed PTX code into ${lib_name}.")
-  endif()
-
-  message("Library .cu kernels files to compile as PTX: ${srcCudaFilesToPTX}")
-
-  # Build CUDA to PTX code and const char
-  get_target_property(project_interface_INCLUDE_DIRS ${project_name}_include INTERFACE_INCLUDE_DIRECTORIES)
-  if (NOT project_interface_INCLUDE_DIRS)
-    set(project_interface_INCLUDE_DIRS "")
-  endif()
-
-  set(PTX_INCLUDE_DIRS ${CUDAToolkit_INCLUDE_DIRS} 
-                      ${OptiX_INCLUDE_DIRS} 
-                      ${project_interface_INCLUDE_DIRS} 
-                      ) # Include directories for PTX compilation
-
-  cuda_compile_and_embed(embedded_ptx_code ${sm_version} "${PTX_INCLUDE_DIRS}" ${srcCudaFilesToPTX})
-  # NOTE: Macro above sets up the build of CUDA kernels -> PTX code from which OptiX module is built.
-  # Build occurs before compilation and linking of the library (or executables).
-  # Variable embedded_ptx_code must be extern "C" const char within the cpp source code.
-    
-  # Add the embedded PTX code to the library
-  target_sources(${lib_name} PRIVATE ${embedded_ptx_code})    
-endif()
-
 ### Link targets
 # Project include directories
 target_link_libraries(${lib_name} ${lib_link_scope} ${project_name}_include ${LIB_COMPILE_TARGET})
@@ -114,19 +86,17 @@ if (ENABLE_CUDA)
   target_link_libraries(${lib_name} ${lib_link_scope} ${CUDA_COMPILE_TARGET})
 endif()
 
-# Link OptiX interface target
-if(ENABLE_OPTIX)
-  target_link_libraries(${lib_name} ${lib_link_scope} ${OPTIX_COMPILE_TARGET})
-endif()
-
 if (ENABLE_OPENGL)
   target_link_libraries(${lib_name} ${lib_link_scope} ${OPENGL_COMPILE_TARGET})
 endif()
 
 # Link profiling interface: gperftools always when found, compile flags only with ENABLE_PROFILING.
-# PRIVATE: profiling is a build-time concern; not propagated to consumers and not exported.
 if (NOT lib_is_header_only AND TARGET ${PROFILING_COMPILE_TARGET})
-  target_link_libraries(${lib_name} PRIVATE ${PROFILING_COMPILE_TARGET})
+  if (PROFILING_PROPAGATES_TO_CONSUMERS)
+    target_link_libraries(${lib_name} PUBLIC ${PROFILING_COMPILE_TARGET})
+  else()
+    target_link_libraries(${lib_name} PRIVATE ${PROFILING_COMPILE_TARGET})
+  endif()
 endif()
 
 #target_include_directories(${lib_name} INTERFACE ${interface_INCLUDE_DIRS} ) 
@@ -155,9 +125,6 @@ endif()
                       
 if (ENABLE_CUDA)
   list(APPEND installable_targets ${CUDA_COMPILE_TARGET})
-  if(ENABLE_OPTIX)
-    list(APPEND installable_targets ${OPTIX_COMPILE_TARGET})
-  endif()
 endif()
 
 if (ENABLE_OPENGL)

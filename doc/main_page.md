@@ -1,61 +1,33 @@
-# cpp_cuda_template_project {#mainpage}
+# slam-primitives {#mainpage}
 
-See the [README](../../README.md) for full usage documentation, or read on for the condensed reference.
+`slam-primitives` is a header-only C++20 library with reusable SLAM data
+structures for feature locations, feature sets, feature tracks, feature-set
+bundles, circular buffers, and sliding-window covisibility graphs.
 
-## Installation
+See README.md for build and installation instructions.
 
-```bash
-git clone <repo-url> my_project && cd my_project
-./build_lib.sh -t release -i      # build + install to ./install
-```
-
-## Common Build Toggles
+## Build
 
 ```bash
-# Enable CUDA + NVCC optimization toggles
-./build_lib.sh -D ENABLE_CUDA=ON -D CUDA_ENABLE_FMAD=ON -D CUDA_ENABLE_EXTRA_DEVICE_VECTORIZATION=ON
-
-# Enable oneTBB and explicit SIMD/FMA
-./build_lib.sh -D ENABLE_TBB=ON -D CPU_ENABLE_SIMD=ON -D CPU_SIMD_LEVEL=avx2 -D CPU_ENABLE_FMA=ON
-
-# Disable native tuning for portable binaries
-./build_lib.sh -D CPU_ENABLE_NATIVE_TUNING=OFF
+./build_lib.sh -t relwithdebinfo -i
 ```
 
-## Wrapper Build
-
-```bash
-# Python wrapper
-./build_lib.sh -p
-
-# Python + MATLAB wrappers
-./build_lib.sh -p -m
-
-# Use a local wrap checkout instead of installed gtwrap
-./build_lib.sh -p --gtwrap-root /path/to/wrap
-```
-
-Install Python package manually from the generated folder:
-
-```bash
-cd build/python
-python -m pip install .
-```
-
-## Example usage (assuming installation worked)
+The installed package exports:
 
 ```cmake
-set(my_project_DIR "/path/to/install/lib/cmake/my_project")
-find_package(my_project REQUIRED)
-target_link_libraries(my_target PRIVATE my_project::my_project)
+find_package(slam-primitives REQUIRED CONFIG)
+target_link_libraries(my_target PRIVATE slam-primitives::slam-primitives)
 ```
 
-See `examples/template_consumer_project/` for a complete downstream CMake project.
+## Optional Components
 
-## Adapting to a new project
+- CUDA language support is optional and disabled by default.
+- Python wrapper support is optional and generated from the configured wrapper
+  interface when enabled.
+- Documentation builds generate HTML by default and XML when
+  `BUILD_DOC_XML=ON`.
 
-Replace all occurrences of `template_project` with your project name, rename
-`src/template_src/` and `src/template_src_kernels/`, and update
-`set(project_name ...)` in the root `CMakeLists.txt`.
+## Examples
 
-Full details in `README.md`.
+Use `examples/template_examples/` for in-tree usage and
+`examples/template_consumer_project/` for an installed-package consumer smoke.

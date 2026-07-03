@@ -7,9 +7,6 @@
 #add_executable(custom-main-tests test.cpp test-main.cpp)
 #target_link_libraries(custom-main-tests PRIVATE Catch2::Catch2)
 
-# Set additional properties for Catch2 test targets
-set(CATCH2_TEST_PROPERTIES "--output-on-failure;--reporter=compact") 
-
 # Exclude EXCLUDED_LIST from the list of tests
 set(EXCLUDED_LIST "test_to_exclude")  # Specify files to exclude WE
 set(TESTS_LIST "") 
@@ -23,6 +20,7 @@ add_subdirectory(test_containers)
 add_subdirectory(test_feature_sets)
 add_subdirectory(test_bundle)
 add_subdirectory(test_covisibility)
+add_subdirectory(test_wrapped)
 add_subdirectory(test_fixtures)
 
 # Add tests to build

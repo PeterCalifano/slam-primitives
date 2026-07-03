@@ -1,3 +1,3 @@
-# Template Consumer Project
+# slam-primitives Consumer Project
 
-This folder is intended as an example/test usage of the template project as target to be consumed. That is, it demonstrates how to integrate and utilize the built library into another cmake project.
+This folder demonstrates using an installed `slam-primitives` package from a downstream CMake project.

@@ -1,13 +1,21 @@
 #include "example_project.h"
 
+#include <iostream>
+
 int main()
 {
-    spdlog_utils::ConfigureDefaultLogging();
-    auto objLogger_ = spdlog_utils::GetLogger("example_consumer_project");
-    objLogger_->info("Hello, World! This is an example of project using the template_project as library, integrating it through cmake.");
+    using namespace slam_primitives;
 
-    // Call the placeholder function from the template_src library
-    placeholder::placeholder_fcn();
+    using Track = CFeatureTrack<SFeatureLocation2D, 64>;
+    CFeatureSetBundle<Track, 32> objBundle_;
+
+    Track objTrack_(0);
+    objTrack_.addKeypointToTrack({100.0, 200.0}, 0);
+    objTrack_.addKeypointToTrack({101.5, 201.2}, 1);
+
+    const SetID uiTrackId_ = objBundle_.allocate(std::move(objTrack_));
+    std::cout << "Allocated track with SetID=" << uiTrackId_
+              << ", length=" << objBundle_.get(uiTrackId_).getTrackLength() << "\n";
 
     return 0;
 }

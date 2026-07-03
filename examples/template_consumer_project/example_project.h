@@ -1,4 +1,5 @@
 #pragma once
-#include <iostream>
-#include <template_src/placeholder.h>
-#include <utils/logging/SpdlogUtils.h>
+
+#include <slam_primitives/bundle/CFeatureSetBundle.h>
+#include <slam_primitives/feature_sets/CFeatureTrack.h>
+#include <slam_primitives/types/SFeatureLocation2D.h>

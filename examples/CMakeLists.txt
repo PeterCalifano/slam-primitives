@@ -1,6 +1,6 @@
 set(lib_name ${project_name}) # Default name for the library is project_name
 
-set(EXCLUDED_LIST "example_build")
+set(EXCLUDED_LIST "")
 
 # Add subdirectories
 add_subdirectory(template_examples)

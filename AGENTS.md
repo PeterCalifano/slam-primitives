@@ -17,11 +17,15 @@
 
 Use `gtsam_spaceNav` as the local C++ reference. Prefer modern C++ in the Jason Turner sense: clear ownership, RAII, const-correct APIs, compile-time checks where useful, no avoidable raw owning pointers, no macro metaprogramming when templates or concepts work, and warnings treated as design feedback. Use C++20 for new code; prefer concepts over SFINAE. Keep the library header-only unless a build-boundary reason exists.
 
+Make APIs explicit about invariants and lifetime. Prefer value types, references, `std::span`/views for non-owning ranges, `std::optional`/typed results for absence, and standard exceptions for invalid public API usage. Mark value-returning query APIs `[[nodiscard]]` when ignoring the result is probably a bug. Use `constexpr`, `noexcept`, and `static_assert` when they express a real contract, not as decoration. Keep headers self-contained and avoid hidden global state, surprising allocation, and public macros.
+
 Match existing names: classes use `C...` (`CFeatureTrack`), plain data structs use `S...`, enums use `E...`, and methods use lower camel case (`getTrackLength`). Keep APIs small and explicit. Python code requires Python >= 3.12, complete type hints, dataclasses over ad-hoc dicts, and enums over multi-value literals.
 
 ## Testing Guidelines
 
 Use Catch2 for C++ tests. Add tests next to the affected module, naming files `test_<TypeOrFeature>.cpp`, and use descriptive `TEST_CASE` names with tags such as `[feature_sets]`. For wrapper changes, include the relevant CTest target and import-level validation. Prefer focused regression tests before broad integration tests.
+
+Review new code against the same standard: check ownership/lifetime clarity, invariant enforcement, warning cleanliness, header self-sufficiency, wrapper impact, and whether tests cover boundary conditions as well as nominal behavior.
 
 ## Commit & Pull Request Guidelines
 

@@ -56,11 +56,33 @@ The library target is an INTERFACE CMake target. Keep new core code header-only 
 
 Use C++20 for new code. Prefer concepts over SFINAE, explicit APIs over clever inference, and compile-time capacity templates where that matches existing containers. Match existing names: classes use `C...`, plain data types use `S...`, enums use `E...`, and methods use lower camel case such as `getTrackLength`.
 
+The C++ quality bar is concrete:
+
+- Make ownership and lifetimes obvious at the call site. Prefer value semantics, references, and `std::span` or other views for non-owning ranges. Do not introduce raw owning pointers.
+- Express invariants in the type system when practical. Use concepts, `static_assert`, constrained templates, fixed-capacity types, and strongly typed IDs instead of comments or sentinel values.
+- Keep public headers self-contained, deterministic, and low-surprise. Avoid hidden global state, public macros, non-local side effects, and unnecessary dynamic allocation.
+- Use `[[nodiscard]]` for value-returning queries where ignoring the result is likely a bug. Use `constexpr` and `noexcept` when they document and enforce a real contract.
+- Prefer standard algorithms, ranges, and small named functions over clever loops or duplicated logic. Optimize only with evidence and keep performance assumptions documented.
+- Treat warnings, sanitizer findings, and static-analysis feedback as design signals. Fix the contract when possible instead of suppressing the symptom.
+
 Python code requires Python >= 3.12, complete type hints, dataclasses instead of ad-hoc dicts, and enums instead of multi-value literals. New public classes or functions should include a runnable example with expected output when practical.
 
 ## Testing Guidance
 
 Tests use Catch2 and mirror module layout under `tests/test_*`. Add focused tests near the affected component, naming files `test_<TypeOrFeature>.cpp`. Use descriptive `TEST_CASE` names and tags such as `[feature_sets]`. For wrapper changes, include CTest coverage plus import-level validation. Prefer a narrow regression test before broad integration coverage.
+
+For C++ API changes, cover nominal behavior, boundary capacity, invalid input, ordering/lookup contracts, and compile-time constraints where applicable. A header-only change should at least compile through its owning test target; a wrapper-facing change should also prove import-level behavior.
+
+## Review Checklist
+
+When reviewing this repository, lead with bugs or regressions first. Score each improvement by importance and confidence. Use this checklist:
+
+- API contract: Are ownership, lifetime, absence, invalid input, and capacity limits explicit?
+- Invariants: Are constraints enforced by types, concepts, `static_assert`, or clear runtime checks?
+- Header hygiene: Can each public header compile on its own with required includes only?
+- Build hygiene: Are warnings enabled and clean for the supported compilers and optional surfaces?
+- Test coverage: Do tests include boundary, invalid, and wrapper/import behavior, not only nominal paths?
+- Maintainability: Is the implementation small, named, local, and consistent with `gtsam_spaceNav` style?
 
 ## Commit and PR Guidance
 

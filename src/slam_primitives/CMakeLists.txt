@@ -23,6 +23,7 @@ add_subdirectory(containers)
 add_subdirectory(feature_sets)
 add_subdirectory(bundle)
 add_subdirectory(covisibility)
+add_subdirectory(logging)
 add_subdirectory(wrapped)
 #################
 

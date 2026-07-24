@@ -154,6 +154,14 @@ The wrapper exposes Python-friendly feature-track, bundle, and covisibility flow
 
 `import slam_primitives` always works from the source package. `HAS_WRAPPER` is `True` only when the compiled extension imports successfully; otherwise it remains `False` and `WRAPPER_IMPORT_ERROR` records the import failure.
 
+## Header-only Logging
+
+Consumers can opt into the dependency-free C++20 logger by including
+`slam_primitives/logging/CLogger.h`. It preserves the library's `INTERFACE`
+target model and supports severity filtering, explicit colors, stream routing,
+environment configuration, and complete-line concurrent output. See
+[doc/logging.md](doc/logging.md) for its ownership and threading contract.
+
 ## CI
 
 GitHub workflows are initialized for:

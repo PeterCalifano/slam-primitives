@@ -42,11 +42,6 @@ function(add_examples project_lib_name excluded_list target_compile_settings)
         add_executable(${exampleName} ${exampleFile})
         target_link_libraries(${exampleName} PRIVATE ${project_lib_name} ${target_compile_settings})
         target_include_directories(${exampleName} PRIVATE ${${project_lib_name}_INCLUDE_DIRS})
-        if(SPDLOG_ENABLED)
-            target_compile_definitions(${exampleName} PRIVATE SPDLOG_UTILS_ENABLED=1)
-        else()
-            target_compile_definitions(${exampleName} PRIVATE SPDLOG_UTILS_ENABLED=0)
-        endif()
     endforeach()
 
 endfunction()
@@ -183,11 +178,6 @@ function(add_tests project_lib_name excluded_list tests_list_var target_compile_
             list(APPEND registeredTests ${testName})
 
             target_link_libraries(${testName} PRIVATE ${project_lib_name} ${target_compile_settings} ${catch2_target})
-            if(SPDLOG_ENABLED)
-                target_compile_definitions(${testName} PRIVATE SPDLOG_UTILS_ENABLED=1)
-            else()
-                target_compile_definitions(${testName} PRIVATE SPDLOG_UTILS_ENABLED=0)
-            endif()
             catch_discover_tests(${testName} ${catch2DiscoverArgs})
         endforeach()
 

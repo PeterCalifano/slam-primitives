@@ -9,7 +9,7 @@
 * **`-u`**: treat unset variables as errors (catches typos/undefined vars).
 * **`-o pipefail`**: a pipeline fails if any command fails, not just the last.
 
-**`IFS=$'\n\t'`**
+**`IFS` restricted to newline and tab**
 
 * Narrows the word-splitting delimiters to newline/tab (safer for paths with spaces).
 

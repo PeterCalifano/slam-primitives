@@ -16,7 +16,6 @@ function(handle_submodules)
 
             if (NOT _submodule_name STREQUAL "header_only" AND
                 NOT _submodule_name STREQUAL "Catch2" AND
-                NOT _submodule_name STREQUAL "spdlog" AND
                 NOT _submodule_name STREQUAL "wrap")
                 if (EXISTS "${_submodule_dir}/CMakeLists.txt")
                     add_subdirectory("${_submodule_dir}" EXCLUDE_FROM_ALL)

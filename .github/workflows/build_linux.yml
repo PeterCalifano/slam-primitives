@@ -28,6 +28,7 @@ on:
       - "CMakeLists.txt"
       - "README.md"
       - "build_lib.sh"
+      - "generate_version.sh"
       - ".github/workflows/build_linux.yml"
   pull_request:
     branches:
@@ -46,6 +47,7 @@ on:
       - "CMakeLists.txt"
       - "README.md"
       - "build_lib.sh"
+      - "generate_version.sh"
       - ".github/workflows/build_linux.yml"
 
 concurrency:
@@ -93,7 +95,9 @@ jobs:
           test ! -e VERSION
           removed_backend_pattern="Handle""Opt""iX|ENABLE_""OP""TIX|cmake_cuda_""pt""x_tools"
           stale_template_pattern="wrap_""interface\\.i|template_""project|cpp_cuda_""template_""project"
-          if rg -n "${removed_backend_pattern}|${stale_template_pattern}" CMakeLists.txt cmake src tests examples python doc README.md; then
+          if rg -n "${removed_backend_pattern}|${stale_template_pattern}" \
+            CMakeLists.txt cmake src tests examples python ros2 \
+            build_lib.sh build_ros2.sh generate_version.sh; then
             echo "Forbidden stale template or removed backend surface found."
             exit 1
           fi
@@ -117,11 +121,85 @@ jobs:
             -DENABLE_OPENGL=OFF \
             -DENABLE_TBB=ON \
             -DBUILD_DOC_XML=ON \
+            -DDOC_WARN_AS_ERROR=ON \
             -DCPU_ENABLE_NATIVE_TUNING=OFF \
             -Dslam-primitives_BUILD_PROGRAMS=ON \
             -Dslam-primitives_BUILD_EXAMPLES=ON \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Validate metadata-only configuration
+        run: |
+          metadata_dir="${RUNNER_TEMP}/slam-primitives-metadata"
+          rm -rf "${metadata_dir}"
+          cmake -S . -B "${metadata_dir}" -DPROJECT_METADATA_ONLY=ON
+          test "$(awk -F= '$1 == "CMAKE_PROJECT_NAME:STATIC" { print $2 }' \
+            "${metadata_dir}/CMakeCache.txt")" = "slam-primitives"
+          if rg -n '^CMAKE_CXX_COMPILER:' "${metadata_dir}/CMakeCache.txt"; then
+            echo "Metadata-only configuration unexpectedly enabled C++."
+            exit 1
+          fi
+
+      - name: Validate nested source consumption
+        run: |
+          nested_dir="${RUNNER_TEMP}/slam-primitives-nested-consumer"
+          rm -rf "${nested_dir}"
+          mkdir -p "${nested_dir}"
+
+          cat > "${nested_dir}/CMakeLists.txt" <<'CMAKE'
+          cmake_minimum_required(VERSION 3.15)
+          project(slam_primitives_nested_consumer LANGUAGES CXX)
+
+          set(ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+          set(ENABLE_FETCH_CATCH2 OFF CACHE BOOL "" FORCE)
+          set(ENABLE_CUDA OFF CACHE BOOL "" FORCE)
+          set(ENABLE_OPENGL OFF CACHE BOOL "" FORCE)
+          set(ENABLE_TBB OFF CACHE BOOL "" FORCE)
+          set(slam-primitives_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+          set(slam-primitives_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+          set(LIB_TARGET_NAME_OVERRIDE nested_slam_primitives)
+
+          add_subdirectory(
+            "$ENV{GITHUB_WORKSPACE}"
+            "${CMAKE_CURRENT_BINARY_DIR}/slam_primitives")
+
+          get_directory_property(
+            child_module_path
+            DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/slam_primitives"
+            DEFINITION CMAKE_MODULE_PATH)
+          list(FIND child_module_path
+            "$ENV{GITHUB_WORKSPACE}/cmake"
+            project_module_path_index)
+          if(project_module_path_index EQUAL -1)
+            message(FATAL_ERROR
+              "Nested module path does not contain slam-primitives/cmake: "
+              "${child_module_path}")
+          endif()
+
+          add_executable(nested_consumer main.cpp)
+          target_link_libraries(
+            nested_consumer PRIVATE
+            slam-primitives::slam-primitives)
+          CMAKE
+
+          cat > "${nested_dir}/main.cpp" <<'CPP'
+          #include <slam_primitives/logging/CLogger.h>
+
+          int main()
+          {
+              using slam_primitives::logging::CLogger;
+              using slam_primitives::logging::ELogLevel;
+              return CLogger("nested", ELogLevel::Quiet)
+                         .shouldLog(ELogLevel::Error)
+                     ? 1
+                     : 0;
+          }
+          CPP
+
+          cmake -S "${nested_dir}" -B "${nested_dir}/build" -GNinja \
+            -DCPU_ENABLE_NATIVE_TUNING=OFF
+          cmake --build "${nested_dir}/build" --parallel 2
+          "${nested_dir}/build/nested_consumer"
 
       - name: Build
         run: cmake --build "${BUILD_DIR}" --parallel 4
@@ -137,6 +215,52 @@ jobs:
           cmake -S examples/template_consumer_project -B "${CONSUMER_DIR}" -GNinja \
             -DSLAM_PRIMITIVES_INSTALL_PREFIX="${INSTALL_DIR}"
           cmake --build "${CONSUMER_DIR}" --parallel 2
+
+      - name: Validate canonical source package
+        run: |
+          source_package_dir="${RUNNER_TEMP}/slam-primitives-source-package"
+          source_extract_dir="${RUNNER_TEMP}/slam-primitives-source-extract"
+          rm -rf "${source_package_dir}" "${source_extract_dir}"
+          mkdir -p "${source_package_dir}" "${source_extract_dir}"
+
+          ./generate_version.sh --no-sync-ros2
+          cpack --config "${BUILD_DIR}/CPackSourceConfig.cmake" \
+            -B "${source_package_dir}"
+
+          source_archive="$(find "${source_package_dir}" -maxdepth 1 \
+            -type f -name 'slam-primitives-*-source.tar.gz' -print -quit)"
+          test -n "${source_archive}"
+          tar -xzf "${source_archive}" -C "${source_extract_dir}"
+          source_root="$(find "${source_extract_dir}" -mindepth 1 \
+            -maxdepth 1 -type d -print -quit)"
+
+          test -f "${source_root}/VERSION"
+          test ! -e "${source_root}/.git"
+          test ! -e "${source_root}/build"
+          test ! -e "${source_root}/install"
+          test ! -e "${source_root}/ros2/build"
+          test ! -e "${source_root}/ros2/install"
+          test ! -e "${source_root}/ros2/log"
+          test -z "$(find "${source_root}" -type d \
+            \( -name .pytest_cache -o -name .mypy_cache \
+               -o -name .ruff_cache -o -name __pycache__ \) \
+            -print -quit)"
+          test -z "$(find "${source_root}" -type f \
+            \( -name '*.pyc' -o -name '*.pyo' -o -name '*.pyd' \) \
+            -print -quit)"
+
+          archive_metadata_dir="${RUNNER_TEMP}/slam-primitives-archive-metadata"
+          rm -rf "${archive_metadata_dir}"
+          GIT_CEILING_DIRECTORIES="${source_extract_dir}" \
+            cmake -S "${source_root}" -B "${archive_metadata_dir}" \
+              -DPROJECT_METADATA_ONLY=ON
+          test "$(awk -F= '$1 == "CMAKE_PROJECT_NAME:STATIC" { print $2 }' \
+            "${archive_metadata_dir}/CMakeCache.txt")" = "slam-primitives"
+          if rg -n '^CMAKE_CXX_COMPILER:' \
+            "${archive_metadata_dir}/CMakeCache.txt"; then
+            echo "Archive metadata-only configuration unexpectedly enabled C++."
+            exit 1
+          fi
 
       - name: Build docs
         run: |

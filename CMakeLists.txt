@@ -12,6 +12,15 @@ set(MATLAB_DEFAULT_RELEASE "R2023b")
 
 # PROJECT DEFINITION
 set(project_name "slam-primitives")
+set(project_description
+    "Header-only C++20 visual-SLAM primitives with optional CUDA, wrappers, and ROS 2 interfaces")
+set(project_homepage_url
+    "https://github.com/PeterCalifano/slam-primitives")
+set(PROJECT_MAINTAINER_NAME "Pietro Califano" CACHE STRING
+    "Project maintainer name")
+set(PROJECT_MAINTAINER_EMAIL "petercalifano.gs@gmail.com" CACHE STRING
+    "Project maintainer email")
+set(PROJECT_LICENSE "MIT" CACHE STRING "Project SPDX license identifier")
 
 # Set install default directory if not specified
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -19,18 +28,18 @@ if(NOT DEFINED CMAKE_INSTALL_PREFIX)
 endif()
 
 # Major options
+option(PROJECT_METADATA_ONLY
+       "Configure only project identity and version metadata" OFF)
 option(ENABLE_CUDA "Enable CUDA" OFF)
-option(BUILD_SHARED_LIBS "Build libraries as shared" ON)
-include(cmake/HandleOpenMP.cmake)
 
-set(languages CXX)
-
-if (ENABLE_CUDA)
-  list(APPEND languages CUDA)
+if(PROJECT_METADATA_ONLY)
+  set(languages NONE)
+else()
+  set(languages CXX)
+  if(ENABLE_CUDA)
+    list(APPEND languages CUDA)
+  endif()
 endif()
-
-# Add cmake folder to path
-list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
 # Add git version handling
 include(cmake/HandleGitVersion.cmake)
@@ -46,9 +55,22 @@ set(PROJECT_VERSION_CORE "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PR
 # Resolve version: git --> VERSION file --> hardcoded defaults above
 resolve_project_version()
 
-project( ${project_name} 
-        LANGUAGES ${languages}
-        VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH})
+project(${project_name}
+        VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}
+        DESCRIPTION "${project_description}"
+        HOMEPAGE_URL "${project_homepage_url}"
+        LANGUAGES ${languages})
+
+if(PROJECT_METADATA_ONLY)
+  return()
+endif()
+
+option(BUILD_SHARED_LIBS "Build libraries as shared" ON)
+include(cmake/HandleOpenMP.cmake)
+
+# Add the project-owned module directory only after project() establishes the
+# correct PROJECT_SOURCE_DIR for both top-level and nested configurations.
+list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
 # Write VERSION file to the build directory by default. Writing into the source tree is opt-in so CI/test harness configures do not dirty the checkout.
 option(WRITE_SOURCE_VERSION_FILE "Write VERSION into the source tree during CMake configure" OFF)
@@ -71,6 +93,14 @@ set(LIB_NAMESPACE "${PROJECT_NAME}")
 if (DEFINED LIB_NAMESPACE_OVERRIDE)
   set(LIB_NAMESPACE "${LIB_NAMESPACE_OVERRIDE}")
 endif()
+
+# Keep the exported package identity stable while allowing nested consumers to
+# avoid a collision with an existing unnamespaced target.
+set(LIB_TARGET_NAME "${project_name}")
+if(DEFINED LIB_TARGET_NAME_OVERRIDE)
+  set(LIB_TARGET_NAME "${LIB_TARGET_NAME_OVERRIDE}")
+endif()
+
 if (NOT DEFINED PROJECT_PYTHON_PACKAGE_NAME)
   string(REPLACE "-" "_" _default_python_package_name "${PROJECT_NAME}")
   set(PROJECT_PYTHON_PACKAGE_NAME "${_default_python_package_name}" CACHE STRING
@@ -124,6 +154,19 @@ option(ENABLE_FETCH_CATCH2 "Fetch Catch2 from GitHub if not found" ON)
 # Catch2 tests configuration
 set(CATCH2_TEST_REPORTER "compact" CACHE STRING "Catch2 reporter used by catch_discover_tests. Set empty to use Catch2 defaults.")
 set(CATCH2_TEST_PROPERTIES "LABELS;catch2" CACHE STRING "CTest property name/value pairs applied to discovered Catch2 tests.")
+
+# Python (pytest) testing configuration
+set(PYTHON_TEST_RUNNER "pytest" CACHE STRING
+    "Python test runner used for test*.py files")
+set_property(CACHE PYTHON_TEST_RUNNER PROPERTY STRINGS pytest)
+set(PYTHON_TEST_EXECUTABLE "" CACHE FILEPATH
+    "Python executable used for pytest tests when conda is not selected")
+set(PYTHON_TEST_CONDA_ENV "" CACHE STRING
+    "Optional conda environment name used for Python tests")
+set(PYTHON_TEST_CONDA_PREFIX "" CACHE PATH
+    "Optional conda environment prefix used for Python tests")
+set(PYTHON_TEST_CONDA_EXECUTABLE "conda" CACHE STRING
+    "Conda executable used when a test environment or prefix is selected")
 
 # Options for building programs and examples when this project is the main
 option(${BUILD_PROGRAMS_OPTION_NAME} "Build project program targets when this project is the main project" ON)
@@ -274,6 +317,7 @@ message(STATUS "Target dependencies: ${EXPORT_TARGET_DEPS}")
 
 # Interface target for C++ flags
 add_library(${LIB_COMPILE_TARGET} INTERFACE)
+handle_toolchain(TARGET ${LIB_COMPILE_TARGET})
 handle_tbb(TARGET ${LIB_COMPILE_TARGET})
 handle_compiler_flags_interface(TARGET ${LIB_COMPILE_TARGET})
 
@@ -439,13 +483,37 @@ set(CTEST_NIGHTLY_START_TIME "00:00:00 CET")
 # PACKAGING CONFIGURATION 
 include(InstallRequiredSystemLibraries)
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
+set(CPACK_PACKAGE_HOMEPAGE_URL "${PROJECT_HOMEPAGE_URL}")
+set(CPACK_PACKAGE_VENDOR "${PROJECT_MAINTAINER_NAME}")
+set(CPACK_PACKAGE_CONTACT
+    "${PROJECT_MAINTAINER_NAME} <${PROJECT_MAINTAINER_EMAIL}>")
 set(CPACK_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
 set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
 set(CPACK_PACKAGE_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
 if(DEFINED FULL_VERSION AND NOT "${FULL_VERSION}" STREQUAL "")
   set(CPACK_PACKAGE_FILE_NAME "${project_name}-${FULL_VERSION}")
-  set(CPACK_SOURCE_PACKAGE_FILE_NAME "${project_name}-${FULL_VERSION}")
+  set(CPACK_SOURCE_PACKAGE_FILE_NAME "${project_name}-${FULL_VERSION}-source")
 endif()
 set(CPACK_GENERATOR "TGZ")
 set(CPACK_SOURCE_GENERATOR "TGZ")
+set(_cpack_source_root_regex "${CMAKE_CURRENT_SOURCE_DIR}")
+string(
+  REGEX REPLACE "([][+.*^$()|?\\\\])" "\\\\\\1"
+  _cpack_source_root_regex "${_cpack_source_root_regex}")
+set(CPACK_SOURCE_IGNORE_FILES
+    "^${_cpack_source_root_regex}/\\.git/"
+    "^${_cpack_source_root_regex}/build[^/]*/"
+    "^${_cpack_source_root_regex}/install/"
+    "^${_cpack_source_root_regex}/ros2/(build|install|log)/"
+    "^${_cpack_source_root_regex}/(.*/)?\\.pytest_cache/"
+    "^${_cpack_source_root_regex}/(.*/)?\\.mypy_cache/"
+    "^${_cpack_source_root_regex}/(.*/)?\\.ruff_cache/"
+    "^${_cpack_source_root_regex}/(.*/)?__pycache__/"
+    "^${_cpack_source_root_regex}/.*\\.py[cod]$")
+# CPack writes these regexes into a generated CMake file. Preserve the
+# backslashes across that serialization boundary so the generated file parses
+# without invalid-escape warnings and retains the intended literal-dot matches.
+string(REPLACE "\\" "\\\\" CPACK_SOURCE_IGNORE_FILES
+               "${CPACK_SOURCE_IGNORE_FILES}")
 include(CPack)

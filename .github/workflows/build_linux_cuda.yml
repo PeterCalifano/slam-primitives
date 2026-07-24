@@ -19,6 +19,7 @@ concurrency:
 
 jobs:
   build-test:
+    if: ${{ vars.CI_USE_SELF_HOSTED == 'true' }}
     runs-on:
       - self-hosted
       - Linux

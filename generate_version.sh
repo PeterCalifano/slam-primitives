@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Generate VERSION file without building.
 # Fallback chain: git tags --> existing VERSION file --> hardcoded default.
+# ROS2_PROJECT_METADATA_SYNC=1
 
 set -Eeuo pipefail
 IFS=$'\n\t'
@@ -16,6 +17,49 @@ DEFAULT_PATCH=0
 # Helpers (matching build_lib.sh style)
 info() { echo -e "\e[34m[INFO]\e[0m $*"; }
 warn() { echo -e "\e[33m[WARN]\e[0m $*" >&2; }
+die() { echo -e "\e[31m[ERROR]\e[0m $*" >&2; exit 1; }
+
+usage() {
+    cat <<'EOF'
+Usage:
+  ./generate_version.sh [options]
+
+Options:
+  --sync-ros2     Explicitly synchronize ros2/*/package.xml project metadata.
+  --no-sync-ros2  Write VERSION without synchronizing ROS 2 package metadata.
+  -h, --help      Show this help.
+
+By default, ROS 2 package metadata is synchronized when the supported overlay
+helper is present.
+EOF
+}
+
+# Automatic mode keeps the standalone generator safe in non-ROS repositories,
+# while enabling metadata synchronization when the complete helper is present.
+sync_ros2=auto
+
+parse_args() {
+    while (($# > 0)); do
+        case "$1" in
+            --sync-ros2)
+                sync_ros2=true
+                shift
+                ;;
+            --no-sync-ros2)
+                sync_ros2=false
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            *)
+                die "Unknown argument: $1"
+                ;;
+        esac
+    done
+}
+
 read_version_field() {
     local version_file_="$1"
     local field_name_="$2"
@@ -46,6 +90,8 @@ set_version_components() {
     version_core="${version_major}.${version_minor}.${version_patch}"
     full_version="$(compose_full_version "$version_core" "$version_prerelease" "$version_metadata")"
 }
+
+parse_args "$@"
 
 version_major=""
 version_minor=""
@@ -163,3 +209,46 @@ fi
 } > "$VERSION_FILE"
 
 info "Version ${full_version} (from ${source}) written to ${VERSION_FILE}"
+
+sync_ros2_package_metadata() {
+    if [[ "${sync_ros2}" == false ]]; then
+        return
+    fi
+
+    local ros2_dir_="${SCRIPT_DIR}/ros2"
+    if [[ ! -d "${ros2_dir_}" ]]; then
+        if [[ "${sync_ros2}" == true ]]; then
+            info "ROS 2 overlay not present; skipping package metadata sync"
+        fi
+        return
+    fi
+
+    if [[ "${source}" == "hardcoded default" ]]; then
+        warn "Skipping ROS 2 package metadata sync because the version came from the hardcoded default"
+        return
+    fi
+
+    if [[ ! "${version_core}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        warn "Skipping ROS 2 package metadata sync because '${version_core}' is not strict X.Y.Z"
+        return
+    fi
+
+    local metadata_helper_="${ros2_dir_}/tools/sync_package_metadata.py"
+    if [[ ! -f "${metadata_helper_}" ]]; then
+        if [[ "${sync_ros2}" == true ]]; then
+            warn "ROS 2 package metadata helper is missing; skipping metadata sync"
+        fi
+        return
+    fi
+    if ! command -v python3 >/dev/null 2>&1; then
+        warn "python3 is unavailable; skipping ROS 2 package metadata sync"
+        return
+    fi
+
+    python3 "${metadata_helper_}" \
+        --project-root "${SCRIPT_DIR}" \
+        --ros2-dir "${ros2_dir_}" \
+        --version "${version_core}"
+}
+
+sync_ros2_package_metadata

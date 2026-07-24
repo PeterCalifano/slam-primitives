@@ -1,0 +1,86 @@
+name: build_ros2_overlay
+run-name: Build optional ROS 2 core and interfaces
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "main"
+      - "develop"
+      - "dev_main"
+    tags:
+      - "v*.*.*"
+    paths:
+      - "CMakeLists.txt"
+      - "cmake/**"
+      - "src/**"
+      - "ros2/**"
+      - "build_ros2.sh"
+      - "generate_version.sh"
+      - "tests/test_ros2_metadata.py"
+      - ".github/workflows/build_ros2_overlay.yml"
+  pull_request:
+    branches:
+      - "main"
+      - "develop"
+      - "dev*"
+    paths:
+      - "CMakeLists.txt"
+      - "cmake/**"
+      - "src/**"
+      - "ros2/**"
+      - "build_ros2.sh"
+      - "generate_version.sh"
+      - "tests/test_ros2_metadata.py"
+      - ".github/workflows/build_ros2_overlay.yml"
+
+concurrency:
+  group: ros2-overlay-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  overlay-build:
+    runs-on: ubuntu-24.04
+    container:
+      image: ros:jazzy
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Trust checked-out Git worktree
+        shell: bash
+        run: |
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          git -C "${GITHUB_WORKSPACE}" rev-parse --is-inside-work-tree
+
+      - name: Install overlay dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            git \
+            libeigen3-dev \
+            python3-colcon-common-extensions \
+            python3-pytest \
+            ros-dev-tools
+
+      - name: Verify target-owned metadata synchronizer
+        run: python3 -m pytest -q tests/test_ros2_metadata.py
+
+      - name: Synchronize ROS package metadata
+        shell: bash
+        run: |
+          ./generate_version.sh --sync-ros2
+          git diff --exit-code -- ros2/*/package.xml
+
+      - name: Resolve ROS package dependencies
+        run: |
+          rosdep update
+          rosdep install --from-paths ros2 -i -r -y --rosdistro jazzy
+
+      - name: Build and test core/interfaces overlay
+        run: ./build_ros2.sh --clean --no-version-sync

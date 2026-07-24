@@ -21,6 +21,7 @@ The project is intentionally small and installable as a CMake package. CUDA, one
 | CUDA Toolkit | 12.x | Optional `-DENABLE_CUDA=ON` configuration |
 | oneTBB | any recent | Optional `-DENABLE_TBB=ON` |
 | gtwrap + pybind11 | local checkout or package | Optional Python wrapper |
+| ROS 2 + colcon | Jazzy recommended | Optional core/interfaces overlay |
 
 ## Quick Start
 
@@ -162,12 +163,31 @@ target model and supports severity filtering, explicit colors, stream routing,
 environment configuration, and complete-line concurrent output. See
 [doc/logging.md](doc/logging.md) for its ownership and threading contract.
 
+## Optional ROS 2 Overlay
+
+The standalone header-only build never requires ROS. A separate optional colcon
+workspace installs the core CMake package and the existing feature-track
+message interfaces:
+
+```bash
+./build_ros2.sh --clean
+```
+
+The overlay contains only the `slam_primitives` core shim and
+`slam_primitives_interfaces`; it intentionally has no lifecycle node, bridge,
+or spinup package. See [doc/ros2_overlay.md](doc/ros2_overlay.md) for package,
+metadata synchronization, CUDA, and CI details.
+
 ## CI
 
 GitHub workflows are initialized for:
 
 - Linux configure/build/test/install/consumer/docs validation
 - manual self-hosted CUDA configure/build/test validation
+- optional ROS 2 Jazzy core/interfaces overlay validation
 - documentation artifact builds
 
-The Linux CI path also checks that configure does not write a source-tree `VERSION` file and that removed template/backend surfaces do not reappear.
+The Linux CI path also validates compiler-free project metadata, installation
+through a downstream consumer, canonical source-package contents, absence of
+configure-time source-tree `VERSION` writes, and removed template/backend
+surfaces.

@@ -35,6 +35,9 @@ lib/Catch2
 .env
 /.vs/
 /CMakeSettings.json
+/ros2/build/
+/ros2/install/
+/ros2/log/
 # for QtCreator:
 CMakeLists.txt.user*
 xcode/

@@ -292,8 +292,14 @@ function(handle_cuda)
     message(STATUS "CUDA found: ${CUDAToolkit_VERSION}")
     message(STATUS "CUDA_INCLUDE_DIRS: ${CUDAToolkit_INCLUDE_DIRS}")
 
-    # Add include dirs and definitions to the target
-    target_include_directories(${HCUDA_TARGET} INTERFACE ${CUDAToolkit_INCLUDE_DIRS})
+    # CUDA imported targets recreate toolkit includes for installed consumers.
+    # Keep direct discovery results build-only so exports do not capture this
+    # machine's absolute toolkit path.
+    foreach(_cuda_include_dir IN LISTS CUDAToolkit_INCLUDE_DIRS)
+        target_include_directories(
+            ${HCUDA_TARGET} INTERFACE
+            "$<BUILD_INTERFACE:${_cuda_include_dir}>")
+    endforeach()
     target_compile_definitions(${HCUDA_TARGET} INTERFACE __CUDA_ENABLED__=1)
 
     # Configure shared NVCC optimization flags.

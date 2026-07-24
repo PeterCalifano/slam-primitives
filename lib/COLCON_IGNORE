@@ -1,0 +1,1 @@
+# Keep vendored dependencies outside the optional ROS 2 package graph.

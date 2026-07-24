@@ -1,0 +1,1 @@
+# Keep core Catch2 tests outside the optional ROS 2 package graph.

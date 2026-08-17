@@ -55,7 +55,7 @@ jobs:
           cmake -S . -B "${BUILD_DIR}" -GNinja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DENABLE_TESTS=OFF \
-            -DENABLE_CUDA=OFF \
+            -Dslam-primitives_ENABLE_CUDA=OFF \
             -DENABLE_OPENGL=OFF \
             -DBUILD_DOC_XML=ON \
             -DCPU_ENABLE_NATIVE_TUNING=OFF

@@ -12,25 +12,74 @@ set(MATLAB_DEFAULT_RELEASE "R2023b")
 
 # PROJECT DEFINITION
 set(project_name "slam-primitives")
+set(project_description
+    "Header-only C++20 visual-SLAM primitives with optional CUDA, wrappers, and ROS 2 interfaces")
+set(project_homepage_url
+    "https://github.com/PeterCalifano/slam-primitives")
+set(PROJECT_MAINTAINER_NAME "Pietro Califano" CACHE STRING
+    "Project maintainer name")
+set(PROJECT_MAINTAINER_EMAIL "petercalifano.gs@gmail.com" CACHE STRING
+    "Project maintainer email")
+set(PROJECT_LICENSE "MIT" CACHE STRING "Project SPDX license identifier")
+
+# Determine project ownership before project() so nested builds cannot select
+# languages through unrelated generic cache options owned by their parent.
+set(BUILD_AS_MAIN_PROJECT OFF)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  set(BUILD_AS_MAIN_PROJECT ON)
+endif()
 
 # Set install default directory if not specified
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
   set(CMAKE_INSTALL_PREFIX ${CMAKE_SOURCE_DIR}/install CACHE PATH "Install path" FORCE)
 endif()
 
-# Major options
-option(ENABLE_CUDA "Enable CUDA" OFF)
-option(BUILD_SHARED_LIBS "Build libraries as shared" ON)
-include(cmake/HandleOpenMP.cmake)
+# Project-qualified options are canonical in nested builds. Retain the legacy
+# names only as top-level command-line/cache aliases.
+set(METADATA_ONLY_OPTION_NAME "${project_name}_METADATA_ONLY")
+set(ENABLE_CUDA_OPTION_NAME "${project_name}_ENABLE_CUDA")
 
-set(languages CXX)
+function(_slam_primitives_migrate_top_level_bool_option_alias
+         legacy_option canonical_option option_help)
+  if(NOT BUILD_AS_MAIN_PROJECT)
+    return()
+  endif()
 
-if (ENABLE_CUDA)
-  list(APPEND languages CUDA)
+  get_property(_legacy_alias_is_cached
+      CACHE "${legacy_option}" PROPERTY TYPE SET)
+  if(NOT _legacy_alias_is_cached)
+    return()
+  endif()
+
+  set(_legacy_alias_value "${${legacy_option}}")
+  set("${canonical_option}" "${_legacy_alias_value}"
+      CACHE BOOL "${option_help}" FORCE)
+  unset("${legacy_option}" CACHE)
+endfunction()
+
+_slam_primitives_migrate_top_level_bool_option_alias(
+    PROJECT_METADATA_ONLY "${METADATA_ONLY_OPTION_NAME}"
+    "Configure only project identity and version metadata")
+_slam_primitives_migrate_top_level_bool_option_alias(
+    ENABLE_CUDA "${ENABLE_CUDA_OPTION_NAME}" "Enable CUDA")
+
+option(${METADATA_ONLY_OPTION_NAME}
+       "Configure only project identity and version metadata" OFF)
+option(${ENABLE_CUDA_OPTION_NAME} "Enable CUDA" OFF)
+
+# Retained helpers consume these local spellings without exposing them to a
+# nested parent's cache.
+set(PROJECT_METADATA_ONLY "${${METADATA_ONLY_OPTION_NAME}}")
+set(ENABLE_CUDA "${${ENABLE_CUDA_OPTION_NAME}}")
+
+if(PROJECT_METADATA_ONLY)
+  set(languages NONE)
+else()
+  set(languages CXX)
+  if(ENABLE_CUDA)
+    list(APPEND languages CUDA)
+  endif()
 endif()
-
-# Add cmake folder to path
-list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
 # Add git version handling
 include(cmake/HandleGitVersion.cmake)
@@ -46,9 +95,22 @@ set(PROJECT_VERSION_CORE "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PR
 # Resolve version: git --> VERSION file --> hardcoded defaults above
 resolve_project_version()
 
-project( ${project_name} 
-        LANGUAGES ${languages}
-        VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH})
+project(${project_name}
+        VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}
+        DESCRIPTION "${project_description}"
+        HOMEPAGE_URL "${project_homepage_url}"
+        LANGUAGES ${languages})
+
+if(PROJECT_METADATA_ONLY)
+  return()
+endif()
+
+option(BUILD_SHARED_LIBS "Build libraries as shared" ON)
+include(cmake/HandleOpenMP.cmake)
+
+# Add the project-owned module directory only after project() establishes the
+# correct PROJECT_SOURCE_DIR for both top-level and nested configurations.
+list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
 # Write VERSION file to the build directory by default. Writing into the source tree is opt-in so CI/test harness configures do not dirty the checkout.
 option(WRITE_SOURCE_VERSION_FILE "Write VERSION into the source tree during CMake configure" OFF)
@@ -60,17 +122,19 @@ endif()
 write_build_VERSION_file()
 install(FILES "${PROJECT_BINARY_DIR}/VERSION" DESTINATION ".")
 
-# Define variable for build as subproject (compare source dir)
-set(BUILD_AS_MAIN_PROJECT ON)
-if(NOT CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
-  set(BUILD_AS_MAIN_PROJECT OFF)
-endif()
-
 # Define variable for namespacing (required to prevent global target clashes!)
 set(LIB_NAMESPACE "${PROJECT_NAME}")
 if (DEFINED LIB_NAMESPACE_OVERRIDE)
   set(LIB_NAMESPACE "${LIB_NAMESPACE_OVERRIDE}")
 endif()
+
+# Keep the exported package identity stable while allowing nested consumers to
+# avoid a collision with an existing unnamespaced target.
+set(LIB_TARGET_NAME "${project_name}")
+if(DEFINED LIB_TARGET_NAME_OVERRIDE)
+  set(LIB_TARGET_NAME "${LIB_TARGET_NAME_OVERRIDE}")
+endif()
+
 if (NOT DEFINED PROJECT_PYTHON_PACKAGE_NAME)
   string(REPLACE "-" "_" _default_python_package_name "${PROJECT_NAME}")
   set(PROJECT_PYTHON_PACKAGE_NAME "${_default_python_package_name}" CACHE STRING
@@ -79,7 +143,6 @@ endif()
 set(CUDA_COMPILE_TARGET "${LIB_NAMESPACE}_cuda_compile_interface")
 set(OPENGL_COMPILE_TARGET "${LIB_NAMESPACE}_opengl_compile_interface")
 set(LIB_COMPILE_TARGET "${LIB_NAMESPACE}_lib_compile_interface")
-set(SPDLOG_COMPILE_TARGET "${LIB_NAMESPACE}_spdlog_interface")
 set(SANITIZER_TARGET "${LIB_NAMESPACE}_sanitizer_target_interface")
 set(BUILD_PROGRAMS_OPTION_NAME "${LIB_NAMESPACE}_BUILD_PROGRAMS")
 set(BUILD_EXAMPLES_OPTION_NAME "${LIB_NAMESPACE}_BUILD_EXAMPLES")
@@ -121,12 +184,23 @@ endif()
 option(ENABLE_TESTS              "Build and run tests" ON)
 option(ENABLE_PYTHON_TESTS       "Discover and register Python pytest tests through CTest" OFF)
 option(ENABLE_FETCH_CATCH2 "Fetch Catch2 from GitHub if not found" ON)
-option(ENABLE_SPDLOG "Enable spdlog logging support" OFF)
-option(ENABLE_FETCH_SPDLOG "Fetch spdlog from GitHub if not found" OFF)
 
 # Catch2 tests configuration
 set(CATCH2_TEST_REPORTER "compact" CACHE STRING "Catch2 reporter used by catch_discover_tests. Set empty to use Catch2 defaults.")
 set(CATCH2_TEST_PROPERTIES "LABELS;catch2" CACHE STRING "CTest property name/value pairs applied to discovered Catch2 tests.")
+
+# Python (pytest) testing configuration
+set(PYTHON_TEST_RUNNER "pytest" CACHE STRING
+    "Python test runner used for test*.py files")
+set_property(CACHE PYTHON_TEST_RUNNER PROPERTY STRINGS pytest)
+set(PYTHON_TEST_EXECUTABLE "" CACHE FILEPATH
+    "Python executable used for pytest tests when conda is not selected")
+set(PYTHON_TEST_CONDA_ENV "" CACHE STRING
+    "Optional conda environment name used for Python tests")
+set(PYTHON_TEST_CONDA_PREFIX "" CACHE PATH
+    "Optional conda environment prefix used for Python tests")
+set(PYTHON_TEST_CONDA_EXECUTABLE "conda" CACHE STRING
+    "Conda executable used when a test environment or prefix is selected")
 
 # Options for building programs and examples when this project is the main
 option(${BUILD_PROGRAMS_OPTION_NAME} "Build project program targets when this project is the main project" ON)
@@ -149,6 +223,10 @@ set(GTWRAP_MATLAB_OPTION_NAME "${LIB_NAMESPACE}_BUILD_MATLAB_WRAPPER")
 set(GTWRAP_INTERFACE_OPTION_NAME "${LIB_NAMESPACE}_WRAPPER_INTERFACE_FILES")
 set(GTWRAP_TOP_NAMESPACE_OPTION_NAME "${LIB_NAMESPACE}_GTWRAP_TOP_NAMESPACE")
 set(GTWRAP_DEPENDENCIES_OPTION_NAME "${LIB_NAMESPACE}_GTWRAP_DEPENDENCY_TARGETS")
+set(GTWRAP_RUNTIME_DEPENDENCIES_OPTION_NAME
+    "${LIB_NAMESPACE}_GTWRAP_RUNTIME_DEPENDENCY_TARGETS")
+set(GTWRAP_MATLAB_MODULE_OPTION_NAME
+    "${LIB_NAMESPACE}_GTWRAP_MATLAB_MODULE_NAME")
 set(GTWRAP_ROOT_OPTION_NAME "${LIB_NAMESPACE}_GTWRAP_ROOT_DIR")
 
 option(${GTWRAP_PYTHON_OPTION_NAME} "Build Python wrapper" ${GTWRAP_BUILD_PYTHON_DEFAULT})
@@ -175,6 +253,22 @@ if (NOT DEFINED ${GTWRAP_DEPENDENCIES_OPTION_NAME})
       ""
       CACHE STRING
       "Additional dependency targets required before wrapping."
+      FORCE)
+endif()
+
+if (NOT DEFINED ${GTWRAP_RUNTIME_DEPENDENCIES_OPTION_NAME})
+  set(${GTWRAP_RUNTIME_DEPENDENCIES_OPTION_NAME}
+      ""
+      CACHE STRING
+      "Direct project-owned shared runtime build targets packaged beside the Python wrapper."
+      FORCE)
+endif()
+
+if(NOT DEFINED ${GTWRAP_MATLAB_MODULE_OPTION_NAME})
+  set(${GTWRAP_MATLAB_MODULE_OPTION_NAME}
+      "${PROJECT_PYTHON_PACKAGE_NAME}"
+      CACHE STRING
+      "Identifier-safe module name used for generated MATLAB wrapper code."
       FORCE)
 endif()
 
@@ -235,8 +329,6 @@ find_package( Doxygen QUIET)
 
 # Handle Catch2 tools
 include(cmake/HandleCatch2.cmake)
-include(cmake/HandleSpdlog.cmake)
-handle_spdlog(TARGET ${SPDLOG_COMPILE_TARGET})
 
 # Include cmake tools (depends on Catch2)
 include(cmake/cmake_utils.cmake)
@@ -265,9 +357,6 @@ endif()
 if(ENABLE_TBB)
   list(APPEND EXPORT_TARGET_DEPS TBB)
 endif()
-if(SPDLOG_ENABLED AND SPDLOG_EXTERNAL_PACKAGE)
-  list(APPEND EXPORT_TARGET_DEPS spdlog)
-endif()
 
 message(STATUS "Target dependencies: ${EXPORT_TARGET_DEPS}")
 
@@ -282,6 +371,7 @@ message(STATUS "Target dependencies: ${EXPORT_TARGET_DEPS}")
 
 # Interface target for C++ flags
 add_library(${LIB_COMPILE_TARGET} INTERFACE)
+handle_toolchain(TARGET ${LIB_COMPILE_TARGET})
 handle_tbb(TARGET ${LIB_COMPILE_TARGET})
 handle_compiler_flags_interface(TARGET ${LIB_COMPILE_TARGET})
 
@@ -354,10 +444,9 @@ set(ANY_WRAPPER_ENABLED OFF)
 if(BUILD_AS_MAIN_PROJECT)
   set(LIBNAME_WRAP_TARGET ${project_name})
   handle_gtwrappers() # You may also pass WRAP_INTERFACE_FILES variable to specify interface files, else autofetching is used
-  handle_pybind11_wrapper()
 
   # Determine if any wrapper is enabled
-  if (${GTWRAP_PYTHON_OPTION_NAME} OR PYBIND11_WRAPPER_ENABLED OR ${GTWRAP_MATLAB_OPTION_NAME})
+  if(${GTWRAP_PYTHON_OPTION_NAME} OR ${GTWRAP_MATLAB_OPTION_NAME})
     set(ANY_WRAPPER_ENABLED ON)
   endif()
 endif()
@@ -420,7 +509,6 @@ endif()
 # Print info about wrappers if any
 if (ANY_WRAPPER_ENABLED)
   message(STATUS "================  Wrappers Configuration  ======================")
-  message(STATUS "Python pybind11 direct wrapper              : ${PYBIND11_WRAPPER_ENABLED}")
   message(STATUS "Python gtwrapper                            : ${${GTWRAP_PYTHON_OPTION_NAME}}")
   message(STATUS "MATLAB gtwrapper                            : ${${GTWRAP_MATLAB_OPTION_NAME}}")
   message(STATUS "MATLAB default release                      : ${MATLAB_DEFAULT_RELEASE}")
@@ -429,6 +517,8 @@ if (ANY_WRAPPER_ENABLED)
   message(STATUS "gtwrap interface option name                : ${GTWRAP_INTERFACE_OPTION_NAME}")
   message(STATUS "gtwrap interface files                      : ${${GTWRAP_INTERFACE_OPTION_NAME}}")
   message(STATUS "gtwrap top namespace                        : ${${GTWRAP_TOP_NAMESPACE_OPTION_NAME}}")
+  message(STATUS "gtwrap runtime dependency targets          : ${${GTWRAP_RUNTIME_DEPENDENCIES_OPTION_NAME}}")
+  message(STATUS "gtwrap MATLAB module name                  : ${${GTWRAP_MATLAB_MODULE_OPTION_NAME}}")
   message(STATUS "gtwrap root override                        : ${${GTWRAP_ROOT_OPTION_NAME}}")
 endif()
 message(STATUS "===============================================================")
@@ -447,13 +537,55 @@ set(CTEST_NIGHTLY_START_TIME "00:00:00 CET")
 # PACKAGING CONFIGURATION 
 include(InstallRequiredSystemLibraries)
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
+set(CPACK_PACKAGE_HOMEPAGE_URL "${PROJECT_HOMEPAGE_URL}")
+set(CPACK_PACKAGE_VENDOR "${PROJECT_MAINTAINER_NAME}")
+set(CPACK_PACKAGE_CONTACT
+    "${PROJECT_MAINTAINER_NAME} <${PROJECT_MAINTAINER_EMAIL}>")
 set(CPACK_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
 set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
 set(CPACK_PACKAGE_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
 if(DEFINED FULL_VERSION AND NOT "${FULL_VERSION}" STREQUAL "")
   set(CPACK_PACKAGE_FILE_NAME "${project_name}-${FULL_VERSION}")
-  set(CPACK_SOURCE_PACKAGE_FILE_NAME "${project_name}-${FULL_VERSION}")
+  set(CPACK_SOURCE_PACKAGE_FILE_NAME "${project_name}-${FULL_VERSION}-source")
 endif()
 set(CPACK_GENERATOR "TGZ")
 set(CPACK_SOURCE_GENERATOR "TGZ")
+
+# Preserve caller-owned exclusions and anchor generated paths to this checkout
+# and the exact active binary tree.
+set(CPACK_VERBATIM_VARIABLES YES)
+set(_cpack_source_root_regex "${CMAKE_CURRENT_SOURCE_DIR}")
+string(
+  REGEX REPLACE "([][+.*^$()|?\\\\])" "\\\\\\1"
+  _cpack_source_root_regex "${_cpack_source_root_regex}")
+set(_cpack_binary_root_regex "${CMAKE_BINARY_DIR}")
+string(
+  REGEX REPLACE "([][+.*^$()|?\\\\])" "\\\\\\1"
+  _cpack_binary_root_regex "${_cpack_binary_root_regex}")
+list(APPEND CPACK_SOURCE_IGNORE_FILES
+    "^${_cpack_source_root_regex}/(.*/)?\\.git(/|$)"
+    "^${_cpack_source_root_regex}/(.*/)?\\.codex(/|$)"
+    "^${_cpack_source_root_regex}/CONTEXT\\.md$"
+    "^${_cpack_source_root_regex}/build[^/]*/"
+    "^${_cpack_source_root_regex}/(.*/)?build(/|$)"
+    "^${_cpack_source_root_regex}/(.*/)?install[^/]*/"
+    "^${_cpack_source_root_regex}/ros2/(build|install|log)/"
+    "^${_cpack_source_root_regex}/(.*/)?\\.pytest_cache/"
+    "^${_cpack_source_root_regex}/(.*/)?\\.mypy_cache/"
+    "^${_cpack_source_root_regex}/(.*/)?\\.ruff_cache/"
+    "^${_cpack_source_root_regex}/(.*/)?__pycache__/"
+    "^${_cpack_source_root_regex}/(.*/)?codegen/"
+    "^${_cpack_source_root_regex}/(.*/)?slprj/"
+    "^${_cpack_source_root_regex}/(.*/)?[^/]+_ert_rtw(/|$)"
+    "^${_cpack_source_root_regex}/doc/(html|xml)/"
+    "^${_cpack_source_root_regex}/matlab/mex/"
+    "^${_cpack_source_root_regex}/.*\\.(mexa64|mexw64|mexmaci64)$"
+    "^${_cpack_source_root_regex}/.*\\.py[cod]$"
+    "^${_cpack_source_root_regex}/python/(build|dist)/"
+    "^${_cpack_source_root_regex}/python/[^/]+\\.egg-info/"
+    "^${_cpack_source_root_regex}/python/(setup\\.py|pyproject\\.toml)$"
+    "^${_cpack_source_root_regex}/python/[^/]+/_wrapper_build\\.py$"
+    "^${_cpack_source_root_regex}/python/.*\\.(so(\\..*)?|pyd|dylib|dll)$"
+    "^${_cpack_binary_root_regex}(/|$)")
 include(CPack)

@@ -1,4 +1,4 @@
-set(lib_name ${project_name}) # Default name for the library is project_name
+set(lib_name ${LIB_TARGET_NAME})
 
 # Add config.h file to build
 configure_file(config.h.in config.h)
@@ -35,50 +35,31 @@ install(FILES ${installable_headers}
 # Delete installable_headers
 unset(installable_headers)
 
-list(LENGTH srcLibFiles src_lib_files_count)
-if (src_lib_files_count EQUAL 0)
-  set(lib_is_header_only TRUE)
-  set(lib_link_scope INTERFACE)
-  set(lib_target_type "INTERFACE")
-  add_library(${lib_name} INTERFACE)
-else()
-  set(lib_is_header_only FALSE)
-  set(lib_link_scope PUBLIC)
-  if (BUILD_SHARED_LIBS)
-    set(lib_target_type "SHARED")
-  else()
-    set(lib_target_type "STATIC")
-  endif()
-
-  add_library(${lib_name} ${lib_target_type}
-              ${srcLibFiles})
-  set_target_properties(${lib_name} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(srcLibFiles)
+  message(FATAL_ERROR
+    "slam-primitives is header-only, but compiled implementation files were "
+    "found in src/: ${srcLibFiles}")
 endif()
+
+set(lib_is_header_only TRUE)
+set(lib_link_scope INTERFACE)
+set(lib_target_type "INTERFACE")
+add_library(${lib_name} INTERFACE)
+
+set_target_properties(${lib_name} PROPERTIES EXPORT_NAME ${project_name})
 
 message(STATUS "Configured ${lib_name} as a ${lib_target_type} library target")
 set(PROJECT_LIBRARY_KIND "${lib_target_type}" PARENT_SCOPE)
 
-if (SPDLOG_ENABLED)
-  target_compile_definitions(${lib_name} ${lib_link_scope} SPDLOG_UTILS_ENABLED=1)
-else()
-  target_compile_definitions(${lib_name} ${lib_link_scope} SPDLOG_UTILS_ENABLED=0)
+# Provide the same namespaced target in build and install trees. The alias uses
+# the package identity even when a nested consumer overrides the raw target.
+if(NOT TARGET ${LIB_NAMESPACE}::${project_name})
+  add_library(${LIB_NAMESPACE}::${project_name} ALIAS ${lib_name})
 endif()
-
-# Link sanitizer target only for in-tree builds to avoid export/install deps.
-if (NOT lib_is_header_only AND ENABLE_SANITIZERS AND SANITIZER_TARGET AND TARGET ${SANITIZER_TARGET})
-  target_link_libraries(${lib_name} PRIVATE ${SANITIZER_TARGET})
-endif()
-
-# If need to add other files after add_library, use:
-#target_sources(${lib_name} SHARED ${srcLibFiles})
 
 ### Link targets
 # Project include directories
 target_link_libraries(${lib_name} ${lib_link_scope} ${project_name}_include ${LIB_COMPILE_TARGET})
-
-if (SPDLOG_ENABLED AND SPDLOG_LINK_TARGET)
-  target_link_libraries(${lib_name} ${lib_link_scope} ${SPDLOG_LINK_TARGET})
-endif()
 
 # Link interface target for CUDA
 
@@ -88,15 +69,6 @@ endif()
 
 if (ENABLE_OPENGL)
   target_link_libraries(${lib_name} ${lib_link_scope} ${OPENGL_COMPILE_TARGET})
-endif()
-
-# Link profiling interface: gperftools always when found, compile flags only with ENABLE_PROFILING.
-if (NOT lib_is_header_only AND TARGET ${PROFILING_COMPILE_TARGET})
-  if (PROFILING_PROPAGATES_TO_CONSUMERS)
-    target_link_libraries(${lib_name} PUBLIC ${PROFILING_COMPILE_TARGET})
-  else()
-    target_link_libraries(${lib_name} PRIVATE ${PROFILING_COMPILE_TARGET})
-  endif()
 endif()
 
 #target_include_directories(${lib_name} INTERFACE ${interface_INCLUDE_DIRS} ) 
@@ -115,10 +87,6 @@ set(installable_targets ${installable_targets}
                         ${project_name}_include
                         ${LIB_COMPILE_TARGET})
 
-if (SPDLOG_ENABLED AND SPDLOG_LINK_TARGET AND NOT SPDLOG_EXTERNAL_PACKAGE)
-  list(APPEND installable_targets ${SPDLOG_LINK_TARGET})
-endif()
-
 if (TARGET ${PROFILING_COMPILE_TARGET})
   list(APPEND installable_targets ${PROFILING_COMPILE_TARGET})
 endif()
@@ -131,7 +99,7 @@ if (ENABLE_OPENGL)
   list(APPEND installable_targets ${OPENGL_COMPILE_TARGET})
 endif()
 
-message(NOTICE "Added target to installable list: ${installable_targets}")
+message(STATUS "Added target to installable list: ${installable_targets}")
 #############################################################################
 # Install global_includes.h file
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/global_includes.h" 
@@ -157,28 +125,29 @@ include(CMakePackageConfigHelpers)
 install(EXPORT ${project_name}
     FILE "${project_name}Target.cmake"
     NAMESPACE ${project_name}::
-    DESTINATION lib/cmake/${project_name}
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${project_name}
 )
 
 write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/${project_name}ConfigVersion.cmake"
+    "${PROJECT_BINARY_DIR}/${project_name}ConfigVersion.cmake"
     VERSION ${PROJECT_VERSION}
     COMPATIBILITY AnyNewerVersion
 )
 
 configure_package_config_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/${project_name}Config.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/${project_name}Config.cmake"
-    INSTALL_DESTINATION lib/cmake/${project_name}
+    "${PROJECT_BINARY_DIR}/${project_name}Config.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${project_name}
 )
 
 install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/${project_name}Config.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/${project_name}ConfigVersion.cmake"
-    DESTINATION lib/cmake/${project_name}
+    "${PROJECT_BINARY_DIR}/${project_name}Config.cmake"
+    "${PROJECT_BINARY_DIR}/${project_name}ConfigVersion.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${project_name}
 )
 
 # Add target export to allow usage of build by other consumer projects
-export(EXPORT ${lib_name}
-  FILE "${CMAKE_CURRENT_BINARY_DIR}/cmake/${project_name}Target.cmake"
+export(EXPORT ${project_name}
+  FILE "${PROJECT_BINARY_DIR}/${project_name}Target.cmake"
+  NAMESPACE ${project_name}::
 )

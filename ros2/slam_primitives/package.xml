@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>slam_primitives</name>
+  <version>0.2.0</version>
+  <description>Header-only C++20 visual-SLAM primitives with optional CUDA, wrappers, and ROS 2 interfaces: ROS 2 colcon shim package.</description>
+  <maintainer email="petercalifano.gs@gmail.com">Pietro Califano</maintainer>
+  <license>MIT</license>
+  <url type="website">https://github.com/PeterCalifano/slam-primitives</url>
+
+  <buildtool_depend>cmake</buildtool_depend>
+  <depend>eigen</depend>
+
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>

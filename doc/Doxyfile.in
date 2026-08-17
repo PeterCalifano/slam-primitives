@@ -961,6 +961,8 @@ FILE_PATTERNS          = *.c \
                          *.m \
                          *.mm \
                          *.dox \
+                         *.markdown \
+                         *.md \
                          *.py \
                          *.f90 \
                          *.f \

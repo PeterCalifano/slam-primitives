@@ -112,6 +112,8 @@ function(handle_doxygen_docs)
     if(NOT TARGET ${_doc_target})
         # Add cmake target to generate Doxygen documentation
         add_custom_target(${_doc_target}
+                        COMMAND ${CMAKE_COMMAND} -E make_directory
+                            "${_doc_html_dir}" "${_doc_latex_dir}" "${_doc_xml_dir}"
                         COMMAND ${DOXYGEN_EXECUTABLE} "${_doc_binary_dir}/Doxyfile"
                         WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
                         COMMENT "Generating ${PROJECT_NAME} API documentation with Doxygen"

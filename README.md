@@ -18,9 +18,10 @@ The project is intentionally small and installable as a CMake package. CUDA, one
 | Eigen3 | 3.4+ | Required library dependency |
 | Catch2 | 3.x | Required for C++ tests; fetched when enabled and missing |
 | Doxygen + Graphviz | any recent | Optional docs build |
-| CUDA Toolkit | 12.x | Optional `-DENABLE_CUDA=ON` configuration |
+| CUDA Toolkit | 12.x | Optional `-Dslam-primitives_ENABLE_CUDA=ON` configuration |
 | oneTBB | any recent | Optional `-DENABLE_TBB=ON` |
 | gtwrap + pybind11 | local checkout or package | Optional Python wrapper |
+| ROS 2 + colcon | Jazzy recommended | Optional core/interfaces overlay |
 
 ## Quick Start
 
@@ -48,22 +49,31 @@ cmake --install build --prefix install
 
 | Option | Default | Purpose |
 |---|---:|---|
+| `slam-primitives_METADATA_ONLY` | OFF | Configure identity/version metadata without enabling a compiler |
 | `ENABLE_TESTS` | ON | Build and register Catch2 tests |
-| `ENABLE_CUDA` | OFF | Enable CUDA language support and CUDA compile interface |
+| `slam-primitives_ENABLE_CUDA` | OFF | Enable CUDA language support and CUDA compile interface |
 | `ENABLE_TBB` | OFF | Link oneTBB when available |
 | `ENABLE_OPENGL` | OFF | Enable OpenGL compile interface |
 | `ENABLE_PROFILING` | OFF | Add profiling-friendly compiler settings |
 | `ENABLE_GPERFTOOLS` | `ENABLE_PROFILING` | Link gperftools profiler when found |
 | `ENABLE_TCMALLOC` | OFF | Link tcmalloc when explicitly requested |
-| `BUILD_SHARED_LIBS` | ON | Standard CMake library-type selector |
 | `CPU_ENABLE_NATIVE_TUNING` | ON | Add `-march=native -mtune=native` in optimized GNU/Clang builds |
 | `WRITE_SOURCE_VERSION_FILE` | OFF | Write `VERSION` into the source tree during configure |
 | `BUILD_DOC_XML` | OFF | Generate Doxygen XML alongside HTML |
 | `slam-primitives_BUILD_PROGRAMS` | ON | Build in-tree program targets when this is the main project |
 | `slam-primitives_BUILD_EXAMPLES` | ON | Build in-tree example targets when this is the main project |
 | `slam-primitives_BUILD_PYTHON_WRAPPER` | OFF | Build the optional Python wrapper |
+| `slam-primitives_BUILD_MATLAB_WRAPPER` | OFF | Build the optional MATLAB wrapper |
+| `slam-primitives_GTWRAP_RUNTIME_DEPENDENCY_TARGETS` | empty | Shared runtime targets staged beside the Python extension |
+| `slam-primitives_GTWRAP_MATLAB_MODULE_NAME` | `slam_primitives` | Identifier-safe generated MATLAB/MEX module name |
 
-`Release` and `RelWithDebInfo` builds define `NDEBUG`. For CI or distributable binaries, prefer setting `CPU_ENABLE_NATIVE_TUNING=OFF`.
+The legacy top-level aliases `PROJECT_METADATA_ONLY` and `ENABLE_CUDA` remain
+accepted for existing scripts, but nested consumers must use the canonical
+project-qualified options. The exported namespaced core target is always
+`INTERFACE`; `BUILD_SHARED_LIBS` does not change the core
+library into a compiled target. `Release` and `RelWithDebInfo` builds define
+`NDEBUG`. For CI or distributable binaries, prefer setting
+`CPU_ENABLE_NATIVE_TUNING=OFF`.
 
 ## Library Usage
 
@@ -133,15 +143,16 @@ Wrapper source of truth:
 - Interface file: `src/slam_primitives/wrapped/slam_primitives.i`
 - Header-only facade: `src/slam_primitives/wrapped/slam_primitives_wrapper_interfaces.h`
 
-No generated wrapper `.cpp` is checked in. Generated C++ stays in the build tree.
+No generated wrapper `.cpp` is checked in. Generated C++, packaging metadata,
+the extension, and its runtime manifest stay under `build-wrap/python/`; an
+ordinary wrapper configure/build does not modify `python/` in the checkout.
 
 Example:
 
 ```bash
 cmake -S . -B build-wrap \
   -Dslam-primitives_BUILD_PYTHON_WRAPPER=ON \
-  -Dslam-primitives_GTWRAP_ROOT_DIR=/home/peterc/devDir/dev-tools/wrap \
-  -DGTWRAP_SYNC_TO_MASTER=OFF
+  -Dslam-primitives_GTWRAP_ROOT_DIR=/path/to/wrap
 cmake --build build-wrap --target slam-primitives_py --parallel
 ctest --test-dir build-wrap -R slam-primitives_python_import --output-on-failure
 ```
@@ -154,12 +165,46 @@ The wrapper exposes Python-friendly feature-track, bundle, and covisibility flow
 
 `import slam_primitives` always works from the source package. `HAS_WRAPPER` is `True` only when the compiled extension imports successfully; otherwise it remains `False` and `WRAPPER_IMPORT_ERROR` records the import failure.
 
+The core `INTERFACE` target has no runtime library to package. If future
+project-owned shared dependencies are required by the extension, list their
+build targets in `slam-primitives_GTWRAP_RUNTIME_DEPENDENCY_TARGETS`; CMake
+stages those explicit runtime artifacts beside the wrapper without scanning or
+copying unrelated system libraries.
+
+## Header-only Logging
+
+Consumers can opt into the dependency-free C++20 logger by including
+`slam_primitives/logging/CLogger.h`. It preserves the library's `INTERFACE`
+target model, has no spdlog dependency, and supports severity filtering,
+explicit colors, stream routing, environment configuration, and complete-line
+concurrent output. See
+[doc/logging.md](doc/logging.md) for its ownership and threading contract.
+
+## Optional ROS 2 Overlay
+
+The standalone header-only build never requires ROS. A separate optional colcon
+workspace installs the core CMake package and the existing feature-track
+message interfaces:
+
+```bash
+./build_ros2.sh --clean
+```
+
+The overlay contains only the `slam_primitives` core shim and
+`slam_primitives_interfaces`; it intentionally has no lifecycle node, bridge,
+or spinup package. See [doc/ros2_overlay.md](doc/ros2_overlay.md) for package,
+metadata synchronization, CUDA, and CI details.
+
 ## CI
 
 GitHub workflows are initialized for:
 
 - Linux configure/build/test/install/consumer/docs validation
 - manual self-hosted CUDA configure/build/test validation
+- optional ROS 2 Jazzy core/interfaces overlay validation
 - documentation artifact builds
 
-The Linux CI path also checks that configure does not write a source-tree `VERSION` file and that removed template/backend surfaces do not reappear.
+The Linux CI path also validates compiler-free project metadata, installation
+through a downstream consumer, canonical source-package contents, absence of
+configure-time source-tree `VERSION` writes, and removed template/backend
+surfaces.

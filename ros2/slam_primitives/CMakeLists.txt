@@ -12,7 +12,7 @@ option(
   "Enable optional CUDA support in the slam-primitives core."
   OFF)
 
-set(ENABLE_CUDA "${SLAM_PRIMITIVES_ENABLE_CUDA}" CACHE BOOL
+set(slam-primitives_ENABLE_CUDA "${SLAM_PRIMITIVES_ENABLE_CUDA}" CACHE BOOL
     "Enable CUDA support in the core library." FORCE)
 set(ENABLE_TESTS OFF CACHE BOOL
     "Disable core Catch2 tests in the ROS 2 overlay." FORCE)

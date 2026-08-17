@@ -33,7 +33,7 @@ def project_version(
             str(PROJECT_ROOT),
             "-B",
             str(build_directory_),
-            "-DPROJECT_METADATA_ONLY=ON",
+            "-Dslam-primitives_METADATA_ONLY=ON",
         ],
         check=True,
         capture_output=True,

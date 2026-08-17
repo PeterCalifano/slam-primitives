@@ -62,7 +62,7 @@ jobs:
           cmake -S . -B "${BUILD_DIR}" -GNinja \
             -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
             -DENABLE_TESTS=ON \
-            -DENABLE_CUDA=ON \
+            -Dslam-primitives_ENABLE_CUDA=ON \
             -DENABLE_TBB="${ENABLE_TBB}" \
             -DENABLE_OPENGL=OFF \
             -DCPU_ENABLE_NATIVE_TUNING=OFF \

@@ -95,10 +95,11 @@ jobs:
           test ! -e VERSION
           removed_backend_pattern="Handle""Opt""iX|ENABLE_""OP""TIX|cmake_cuda_""pt""x_tools"
           stale_template_pattern="wrap_""interface\\.i|template_""project|cpp_cuda_""template_""project"
-          if rg -n "${removed_backend_pattern}|${stale_template_pattern}" \
+          removed_logging_pattern="spdlog|HandleSpdlog|ENABLE_SPDLOG|logging/CLogger\\.cpp"
+          if rg -n "${removed_backend_pattern}|${stale_template_pattern}|${removed_logging_pattern}" \
             CMakeLists.txt cmake src tests examples python ros2 \
             build_lib.sh build_ros2.sh generate_version.sh; then
-            echo "Forbidden stale template or removed backend surface found."
+            echo "Forbidden stale template, backend, or compiled logger surface found."
             exit 1
           fi
 
@@ -117,7 +118,7 @@ jobs:
             -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
             -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" \
             -DENABLE_TESTS=ON \
-            -DENABLE_CUDA=OFF \
+            -Dslam-primitives_ENABLE_CUDA=OFF \
             -DENABLE_OPENGL=OFF \
             -DENABLE_TBB=ON \
             -DBUILD_DOC_XML=ON \
@@ -132,7 +133,8 @@ jobs:
         run: |
           metadata_dir="${RUNNER_TEMP}/slam-primitives-metadata"
           rm -rf "${metadata_dir}"
-          cmake -S . -B "${metadata_dir}" -DPROJECT_METADATA_ONLY=ON
+          cmake -S . -B "${metadata_dir}" \
+            -Dslam-primitives_METADATA_ONLY=ON
           test "$(awk -F= '$1 == "CMAKE_PROJECT_NAME:STATIC" { print $2 }' \
             "${metadata_dir}/CMakeCache.txt")" = "slam-primitives"
           if rg -n '^CMAKE_CXX_COMPILER:' "${metadata_dir}/CMakeCache.txt"; then
@@ -152,7 +154,9 @@ jobs:
 
           set(ENABLE_TESTS OFF CACHE BOOL "" FORCE)
           set(ENABLE_FETCH_CATCH2 OFF CACHE BOOL "" FORCE)
-          set(ENABLE_CUDA OFF CACHE BOOL "" FORCE)
+          # A parent's generic option must not select this child's languages.
+          set(ENABLE_CUDA ON CACHE BOOL "" FORCE)
+          set(slam-primitives_ENABLE_CUDA OFF CACHE BOOL "" FORCE)
           set(ENABLE_OPENGL OFF CACHE BOOL "" FORCE)
           set(ENABLE_TBB OFF CACHE BOOL "" FORCE)
           set(slam-primitives_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
@@ -202,7 +206,10 @@ jobs:
           "${nested_dir}/build/nested_consumer"
 
       - name: Build
-        run: cmake --build "${BUILD_DIR}" --parallel 4
+        run: |
+          cmake --build "${BUILD_DIR}" --parallel 4
+          test "$(awk 'END { print NR }' "${BUILD_DIR}/VERSION")" -eq 5
+          test "$(sed -n '5p' "${BUILD_DIR}/VERSION")" != ""
 
       - name: Test
         run: ctest --test-dir "${BUILD_DIR}" --output-on-failure --parallel 2 --no-tests=error
@@ -235,7 +242,10 @@ jobs:
             -maxdepth 1 -type d -print -quit)"
 
           test -f "${source_root}/VERSION"
+          test "$(awk 'END { print NR }' "${source_root}/VERSION")" -eq 5
           test ! -e "${source_root}/.git"
+          test ! -e "${source_root}/.codex"
+          test ! -e "${source_root}/CONTEXT.md"
           test ! -e "${source_root}/build"
           test ! -e "${source_root}/install"
           test ! -e "${source_root}/ros2/build"
@@ -246,14 +256,20 @@ jobs:
                -o -name .ruff_cache -o -name __pycache__ \) \
             -print -quit)"
           test -z "$(find "${source_root}" -type f \
-            \( -name '*.pyc' -o -name '*.pyo' -o -name '*.pyd' \) \
+            \( -name '*.pyc' -o -name '*.pyo' -o -name '*.pyd' \
+               -o -name '*.so' -o -name '*.so.*' -o -name '*.dylib' \
+               -o -name '*.dll' \) \
             -print -quit)"
+          test ! -e "${source_root}/python/pyproject.toml"
+          test ! -e "${source_root}/python/setup.py"
+          test ! -e \
+            "${source_root}/python/slam_primitives/_wrapper_build.py"
 
           archive_metadata_dir="${RUNNER_TEMP}/slam-primitives-archive-metadata"
           rm -rf "${archive_metadata_dir}"
           GIT_CEILING_DIRECTORIES="${source_extract_dir}" \
             cmake -S "${source_root}" -B "${archive_metadata_dir}" \
-              -DPROJECT_METADATA_ONLY=ON
+              -Dslam-primitives_METADATA_ONLY=ON
           test "$(awk -F= '$1 == "CMAKE_PROJECT_NAME:STATIC" { print $2 }' \
             "${archive_metadata_dir}/CMakeCache.txt")" = "slam-primitives"
           if rg -n '^CMAKE_CXX_COMPILER:' \

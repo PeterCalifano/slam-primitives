@@ -47,7 +47,9 @@ The script now uses **GNU `getopt`** to support:
 ### Build layout & performance
 
 * **`-B, --buildpath <dir>`**
-  Where to generate the build tree. Default: `./build`.
+  Where to generate the build tree. Relative paths are resolved from the
+  checkout containing `build_lib.sh`, not the caller's working directory.
+  Default: `<checkout>/build`.
   *Example*: `-B out/debug`
 
 * **`-j, --jobs <N>`**
@@ -59,7 +61,11 @@ The script now uses **GNU `getopt`** to support:
   Benefits: faster incremental builds and better parallelism.
 
 * **`--clean`**
-  If present and we are configuring (i.e., not `--rebuild-only`), delete the build directory before running CMake. Useful to reset a dirty cache.
+  If present and we are configuring (i.e., not `--rebuild-only`), delete the
+  build directory before running CMake. Recursive deletion is restricted to
+  conventional in-checkout paths (`build`, `build*`, or `out/*`). An existing
+  directory must contain a CMake cache whose `CMAKE_HOME_DIRECTORY` identifies
+  this checkout.
 
 ### Configure/build control
 
@@ -81,7 +87,7 @@ The script now uses **GNU `getopt`** to support:
 * **`-D, --define <VAR=VAL>`**
   Pass extra CMake cache definitions (repeatable).
   Example:
-  `-D ENABLE_CUDA=ON -D CUDA_ENABLE_FMAD=ON -D ENABLE_TBB=ON`.
+  `-D slam-primitives_ENABLE_CUDA=ON -D CUDA_ENABLE_FMAD=ON -D ENABLE_TBB=ON`.
 
 * **`-n, --no-optim`**
   Sets `-DNO_OPTIMIZATION=ON` in the CMake cache. Your toolchain/CMakeLists can use this to toggle optimizer knobs (e.g., turn off vectorization or special CPU flags independent of `CMAKE_BUILD_TYPE`).
@@ -105,19 +111,18 @@ The script now uses **GNU `getopt`** to support:
   The script forwards this as:
   `-Dslam-primitives_GTWRAP_ROOT_DIR=<dir>` when the project name is detected, otherwise `-DGTWRAP_ROOT_DIR=<dir>`.
 
-* **`--no-wrap-update`**
-  Disables automatic update of local wrap checkout. By default, wrapper builds
-  first resolve an explicit `--gtwrap-root` or auto-detect `./wrap`,
-  `./lib/wrap`, and `../wrap`, then update the resolved local checkout to latest
-  `origin/master` (including detached/tag checkouts).
+* **`--wrap-update`**
+  Explicitly permits CMake's gtwrap maintenance path to fast-forward a resolved
+  local checkout to `origin/master`. Wrapper builds leave external checkouts
+  unchanged by default. `--no-wrap-update` restates that default.
 
-* **`--no-wrap-submodule-init`**
-  Disables the final fallback that initializes a declared `wrap`/`lib/wrap`
-  git submodule.
-  By default, wrapper resolution order is:
+* **`--wrap-submodule-init`**
+  Explicitly permits initialization of a `wrap`/`lib/wrap` submodule already
+  declared by this repository. No submodule is added automatically, and
+  initialization is disabled by default. Wrapper resolution order is:
   1. explicit or auto-detected local checkout;
   2. installed `gtwrap` via `find_package(gtwrap)`;
-  3. declared git submodule initialization.
+  3. declared git submodule initialization only when this flag is present.
 
 * **`-i, --install`**
   After a successful build (and tests), runs the `install` target.
@@ -133,6 +138,16 @@ The script now uses **GNU `getopt`** to support:
   Disable tests.
   **Note**: For **Release**, tests are **forced on** regardless (safer CI default).
 
+* **`--python-test-conda-env <name>`** / **`--python-test-conda-prefix <dir>`**
+  Select one Conda environment for registered `test*.py` CTest entries.
+
+* **`--python-test-executable <path>`**
+  Select the Python executable for registered Python tests when Conda is not
+  used.
+
+* **`--ctest-extra-args "<args>"`**
+  Append simple whitespace-separated arguments to the final CTest invocation.
+
 ### Help
 
 * **`-h, --help`**
@@ -144,7 +159,7 @@ The script now uses **GNU `getopt`** to support:
 
 **Generator‑agnostic build**
 
-* **Configure**: `cmake -S . -B <dir> [args...]`
+* **Configure**: `cmake -S <checkout> -B <dir> [args...]`
   Uses arrays and proper quoting to avoid word splitting.
 * **Build**: `cmake --build <dir> --parallel <jobs>`
   Works with both Makefiles and Ninja.
@@ -169,7 +184,9 @@ The script now uses **GNU `getopt`** to support:
 2. **Removed duplicate `make`**: your script invoked `make` twice in a row; that’s gone.
 3. **Unified build interface**: replaced direct `make` with `cmake --build` and `ctest`, so switching generators is seamless.
 4. **Test policy**: tests are on by default; **Release** hard‑enables them. You can override in CI by using non‑Release or `--skip-tests` (except in Release).
-5. **`--clean`**: quick way to delete the build dir before configure. You can still manually `rm -rf build` if you prefer.
+5. **`--clean` ownership guard**: deletion is limited to conventional build
+   paths inside this checkout and revalidated against the existing CMake cache
+   immediately before removal.
 6. **Robust quoting & arrays**: all user‑provided flags/paths are quoted and passed as array elements to prevent word splitting and globbing bugs.
 7. **Safer shell**: `set -Eeuo pipefail`, narrowed `IFS`, and an `ERR` trap make failures noisier and earlier.
 8. **Clear logging**: consistent `[INFO]` lines and a compact error banner improve CI readability.
@@ -179,6 +196,11 @@ The script now uses **GNU `getopt`** to support:
 12. **Environment override for jobs**: set `JOBS=64` in CI to change default parallelism without touching scripts.
 13. **Pipefail-safe wrapper probe**: the post-build Python wrapper target check no longer uses a `cmake --build ... --target help | rg -q ...` pipeline, so `-p` does not emit a false missing-target warning after a successful wrapper build.
 14. **Cache-aware wrapper diagnostics**: when Python wrappers are requested but absent, the script now reports whether `--rebuild-only` reused a non-wrapper cache, whether CMake ended up with `slam-primitives_BUILD_PYTHON_WRAPPER=OFF`, and whether wrappers were auto-disabled because interface files were missing or invalid.
+15. **Checkout-relative execution**: invoking the helper from another working
+    directory still configures this checkout and resolves relative build paths
+    consistently.
+16. **Opt-in wrapper maintenance**: local gtwrap updates and declared submodule
+    initialization are disabled unless their positive flags are supplied.
 
 ---
 
@@ -255,7 +277,7 @@ These are configured through `-D/--define` and live in CMake (not dedicated `bui
 * **CUDA build with explicit NVCC optimization toggles**:
 
   ```bash
-  ./build_lib.sh -D ENABLE_CUDA=ON -D CUDA_ENABLE_FMAD=ON -D CUDA_ENABLE_EXTRA_DEVICE_VECTORIZATION=ON
+  ./build_lib.sh -D slam-primitives_ENABLE_CUDA=ON -D CUDA_ENABLE_FMAD=ON -D CUDA_ENABLE_EXTRA_DEVICE_VECTORIZATION=ON
   ```
 
 * **Python + MATLAB wrappers using installed gtwrap**:
@@ -304,20 +326,24 @@ These are configured through `-D/--define` and live in CMake (not dedicated `bui
 
 ## 8) Wrapper packaging notes
 
-* Python package metadata is owned by `python/pyproject.toml.in` and configured into `python/pyproject.toml` when Python wrapping is enabled.
-* The optional `python/setup.py.in` augments source-package installation behavior without duplicating package metadata.
+* Python package metadata is owned by `python/pyproject.toml.in` and configured
+  into `<build_dir>/python/pyproject.toml` when Python wrapping is enabled.
+* The optional `python/setup.py.in` is configured into the same build-owned
+  packaging root without duplicating package metadata.
 * `python/slam_primitives/__init__.py` is the public entrypoint and exports `HAS_WRAPPER`.
-* CMake updates `python/slam_primitives/_wrapper_build.py` so the source package can resolve the latest requested wrapper build.
+* CMake writes `<build_dir>/python/slam_primitives/_wrapper_build.py` so the
+  staged package can resolve its extension and explicitly declared runtime
+  libraries. The source package remains unchanged.
 * Missing `python/slam_primitives/__init__.py` or `python/pyproject.toml.in` no longer blocks wrapper builds: CMake generates minimal fallbacks when needed.
 * Supported install paths are:
 
   ```bash
-  cd python
-  python -m pip install .
+  cmake --build <build_dir> --target python-install
   ```
 
   ```bash
-  cmake --build <build_dir> --target python-install
+  cd <build_dir>/python
+  python -m pip install --no-build-isolation --no-deps .
   ```
 
   In Conda workflows, activate the target env before running `pip install`.

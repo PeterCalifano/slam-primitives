@@ -110,7 +110,7 @@ def _Configure_project_metadata(
                 str(project_root_),
                 "-B",
                 build_directory_,
-                "-DPROJECT_METADATA_ONLY=ON",
+                "-Dslam-primitives_METADATA_ONLY=ON",
             ],
             check=False,
             capture_output=True,

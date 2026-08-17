@@ -1,23 +1,15 @@
-# CMake configuration to handle Python and MATLAB wrapper configuration
+# Resolve gtwrap interfaces and coordinate optional Python and MATLAB wrappers.
+#
+# This facade owns wrapper checkout discovery, synchronization, and common
+# interface configuration. Language-specific target and packaging behavior lives
+# in HandlePythonWrapper.cmake and HandleMatlabWrapper.cmake.
 include_guard(GLOBAL)
 
 include(ExternalProject)
+include("${CMAKE_CURRENT_LIST_DIR}/HandlePythonWrapper.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/HandleMatlabWrapper.cmake")
 
-# Function to set python target properties
-function(set_python_target_properties PYTHON_TARGET OUTPUT_NAME OUTPUT_DIRECTORY)
-  set_target_properties(${PYTHON_TARGET} PROPERTIES
-      INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib"
-      INSTALL_RPATH_USE_LINK_PATH TRUE
-      OUTPUT_NAME "${OUTPUT_NAME}"
-      LIBRARY_OUTPUT_DIRECTORY "${OUTPUT_DIRECTORY}"
-      DEBUG_POSTFIX ""
-      RELWITHDEBINFO_POSTFIX ""
-      TIMING_POSTFIX ""
-      PROFILING_POSTFIX ""
-  )
-endfunction()
-
-# Function to check validity of interface files list
+# Return whether every supplied wrapper interface is an existing `.i` file.
 function(check_interface_files_validity VALIDITY_BOOL)
   set(_interface_files ${ARGN})
   set(_is_valid TRUE)
@@ -41,16 +33,23 @@ function(check_interface_files_validity VALIDITY_BOOL)
   set(${VALIDITY_BOOL} ${_is_valid} PARENT_SCOPE)
 endfunction()
 
-# Function to resolve wrap dependency
+# Resolve an explicit or conventional project-local gtwrap checkout.
 function(resolve_local_wrap_root OUT_VAR)
   set(_preferred_root "")
   if(ARGC GREATER 1)
     set(_preferred_root "${ARGV1}")
   endif()
 
-  if(NOT "${_preferred_root}" STREQUAL "" AND EXISTS "${_preferred_root}/cmake/PybindWrap.cmake")
-    set(${OUT_VAR} "${_preferred_root}" PARENT_SCOPE)
-    return()
+  if(NOT "${_preferred_root}" STREQUAL "")
+    get_filename_component(
+      _preferred_root
+      "${_preferred_root}"
+      REALPATH
+      BASE_DIR "${PROJECT_SOURCE_DIR}")
+    if(EXISTS "${_preferred_root}/cmake/PybindWrap.cmake")
+      set(${OUT_VAR} "${_preferred_root}" PARENT_SCOPE)
+      return()
+    endif()
   endif()
 
   set(_candidates
@@ -69,7 +68,7 @@ function(resolve_local_wrap_root OUT_VAR)
   set(${OUT_VAR} "" PARENT_SCOPE)
 endfunction()
 
-# Check if wrap submodule is already in place
+# Initialize a declared project-local gtwrap submodule when policy permits it.
 function(maybe_init_wrap_submodule OUT_VAR)
   set(${OUT_VAR} "" PARENT_SCOPE)
 
@@ -89,23 +88,7 @@ function(maybe_init_wrap_submodule OUT_VAR)
   endif()
 
   if("${_submodule_path}" STREQUAL "")
-    if(NOT GTWRAP_ADD_SUBMODULE_IF_MISSING)
-      return()
-    endif()
-
-    if(NOT DEFINED GTWRAP_SUBMODULE_PATH OR "${GTWRAP_SUBMODULE_PATH}" STREQUAL "")
-      set(_submodule_path "lib/wrap")
-    else()
-      set(_submodule_path "${GTWRAP_SUBMODULE_PATH}")
-    endif()
-
-    if(NOT DEFINED GTWRAP_SUBMODULE_REPO OR "${GTWRAP_SUBMODULE_REPO}" STREQUAL "")
-      set(_gtwrap_submodule_repo "git@github.com:PeterCalifano/wrap.git")
-    else()
-      set(_gtwrap_submodule_repo "${GTWRAP_SUBMODULE_REPO}")
-    endif()
-  else()
-    set(_gtwrap_submodule_repo "")
+    return()
   endif()
 
   set(_candidate_root "${PROJECT_SOURCE_DIR}/${_submodule_path}")
@@ -125,30 +108,7 @@ function(maybe_init_wrap_submodule OUT_VAR)
     return()
   endif()
 
-  if(NOT "${_gtwrap_submodule_repo}" STREQUAL "")
-    get_filename_component(_submodule_parent "${_candidate_root}" DIRECTORY)
-    file(MAKE_DIRECTORY "${_submodule_parent}")
-
-    message(STATUS "Adding wrap submodule '${_gtwrap_submodule_repo}' at '${_submodule_path}'...")
-    execute_process(
-      COMMAND git submodule add "${_gtwrap_submodule_repo}" "${_submodule_path}"
-      WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-      RESULT_VARIABLE _add_result
-      OUTPUT_QUIET
-      ERROR_VARIABLE _add_error
-    )
-    if(NOT _add_result EQUAL 0)
-      string(STRIP "${_add_error}" _add_error)
-      if("${_add_error}" STREQUAL "")
-        set(_add_error "unknown error")
-      endif()
-      message(WARNING
-        "Failed to add wrap submodule '${_gtwrap_submodule_repo}' at '${_submodule_path}': ${_add_error}")
-      return()
-    endif()
-  else()
-    message(STATUS "Initializing wrap submodule at '${_submodule_path}'...")
-  endif()
+  message(STATUS "Initializing wrap submodule at '${_submodule_path}'...")
 
   execute_process(
     COMMAND git submodule sync --recursive
@@ -167,7 +127,7 @@ function(maybe_init_wrap_submodule OUT_VAR)
   endif()
 endfunction()
 
-# Force repo checkout if found locally
+# Fast-forward a Git-backed local gtwrap checkout to one remote branch.
 function(sync_wrap_checkout WRAP_ROOT BRANCH)
   if(NOT EXISTS "${WRAP_ROOT}/.git")
     return()
@@ -244,14 +204,15 @@ function(sync_wrap_checkout WRAP_ROOT BRANCH)
   endif()
 endfunction()
 
-### Python and MATLAB wrapper configuration using gtwrap
-# Function for common wrapper configuration
+# Resolve shared interface, checkout, dependency, and namespace configuration.
 function(configure_gtwrappers_common)
   set(_gtwrap_python_option_name "${LIB_NAMESPACE}_BUILD_PYTHON_WRAPPER")
   set(_gtwrap_matlab_option_name "${LIB_NAMESPACE}_BUILD_MATLAB_WRAPPER")
   set(_gtwrap_interface_var_name "${LIB_NAMESPACE}_WRAPPER_INTERFACE_FILES")
   set(_gtwrap_top_namespace_var_name "${LIB_NAMESPACE}_GTWRAP_TOP_NAMESPACE")
   set(_gtwrap_extra_deps_var_name "${LIB_NAMESPACE}_GTWRAP_DEPENDENCY_TARGETS")
+  set(_gtwrap_runtime_deps_var_name
+      "${LIB_NAMESPACE}_GTWRAP_RUNTIME_DEPENDENCY_TARGETS")
   set(_gtwrap_root_var_name "${LIB_NAMESPACE}_GTWRAP_ROOT_DIR")
   set(_gtwrap_autodiscover_option_name "${LIB_NAMESPACE}_WRAPPER_AUTODISCOVER_INTERFACE_FILES")
 
@@ -264,27 +225,27 @@ function(configure_gtwrappers_common)
     set(GTWRAP_BRANCH "master" CACHE STRING "wrap branch used when syncing local checkout")
   endif()
   if(NOT DEFINED GTWRAP_SYNC_TO_MASTER)
-    option(GTWRAP_SYNC_TO_MASTER "Sync local wrap checkout to latest origin/<GTWRAP_BRANCH>" ON)
+    option(GTWRAP_SYNC_TO_MASTER
+           "Request synchronization of wrap to origin/<GTWRAP_BRANCH>"
+           OFF)
+  endif()
+  if(NOT DEFINED GTWRAP_MAINTENANCE_UPDATE)
+    option(GTWRAP_MAINTENANCE_UPDATE
+           "Explicitly permit configure-time maintenance of a local wrap checkout"
+           OFF)
   endif()
   if(NOT DEFINED GTWRAP_INIT_SUBMODULE_IF_MISSING)
     option(GTWRAP_INIT_SUBMODULE_IF_MISSING
            "Initialize the wrap git submodule only after local search and find_package(gtwrap) both fail."
-           ON)
+           OFF)
   endif()
-  if(NOT DEFINED GTWRAP_ADD_SUBMODULE_IF_MISSING)
-    option(GTWRAP_ADD_SUBMODULE_IF_MISSING
-           "Add wrap as a git submodule when it is not yet declared in .gitmodules and wrapper resolution fails."
-           ON)
+  # Require an explicit maintenance grant before configure may move a local
+  # checkout. A synchronization request alone must remain non-mutating.
+  if(GTWRAP_SYNC_TO_MASTER AND NOT GTWRAP_MAINTENANCE_UPDATE)
+    message(FATAL_ERROR
+      "GTWRAP_SYNC_TO_MASTER=ON requires GTWRAP_MAINTENANCE_UPDATE=ON. "
+      "Ordinary configuration must not move the wrapper checkout.")
   endif()
-  if(NOT DEFINED GTWRAP_SUBMODULE_REPO)
-    set(GTWRAP_SUBMODULE_REPO "git@github.com:PeterCalifano/wrap.git" CACHE STRING
-        "Git repository used when auto-adding wrap as a submodule.")
-  endif()
-  if(NOT DEFINED GTWRAP_SUBMODULE_PATH)
-    set(GTWRAP_SUBMODULE_PATH "lib/wrap" CACHE STRING
-        "Relative path used when auto-adding wrap as a submodule.")
-  endif()
-
   if(NOT DEFINED ${_gtwrap_root_var_name})
     set(${_gtwrap_root_var_name} "" CACHE PATH
         "Optional path to a local wrap checkout (contains cmake/PybindWrap.cmake)."
@@ -292,12 +253,7 @@ function(configure_gtwrappers_common)
   endif()
 
   set(SEARCH_DIR_WRAP "${CMAKE_CURRENT_SOURCE_DIR}/src")
-  set(_default_python_package_name "${PROJECT_NAME}")
-  if(DEFINED PROJECT_PYTHON_PACKAGE_NAME AND NOT "${PROJECT_PYTHON_PACKAGE_NAME}" STREQUAL "")
-    set(_default_python_package_name "${PROJECT_PYTHON_PACKAGE_NAME}")
-  endif()
-  set(_default_interface_file
-      "${PROJECT_SOURCE_DIR}/src/${_default_python_package_name}/wrapped/${_default_python_package_name}_wrapper.i")
+  set(_default_interface_file "${SEARCH_DIR_WRAP}/wrap_interface.i")
 
   option(${_gtwrap_autodiscover_option_name}
          "Automatically discover wrapper interface files under src/."
@@ -322,7 +278,7 @@ function(configure_gtwrappers_common)
   endif()
 
   if(NOT DEFINED ${_gtwrap_top_namespace_var_name})
-    set(${_gtwrap_top_namespace_var_name} "${_default_python_package_name}" CACHE STRING
+    set(${_gtwrap_top_namespace_var_name} "${PROJECT_NAME}" CACHE STRING
         "Top namespace used in gtwrap pybind code generation."
         FORCE)
   endif()
@@ -330,6 +286,12 @@ function(configure_gtwrappers_common)
   if(NOT DEFINED ${_gtwrap_extra_deps_var_name})
     set(${_gtwrap_extra_deps_var_name} "" CACHE STRING
         "Additional CMake targets that must be built before generating wrappers."
+        FORCE)
+  endif()
+
+  if(NOT DEFINED ${_gtwrap_runtime_deps_var_name})
+    set(${_gtwrap_runtime_deps_var_name} "" CACHE STRING
+        "Direct project-owned shared runtime build targets packaged beside the Python wrapper."
         FORCE)
   endif()
 
@@ -357,6 +319,23 @@ function(configure_gtwrappers_common)
   set(WRAP_PYTHON_VERSION ${PROJECT_PYTHON_VERSION}
       CACHE STRING "The Python version to use for wrapping")
 
+  # Resolve one executable for both wrapper frontends. A normal variable takes
+  # precedence over the legacy cache entry populated by some gtwrap versions.
+  if(DEFINED Python_EXECUTABLE AND NOT "${Python_EXECUTABLE}" STREQUAL "")
+    set(_gtwrap_python_executable "${Python_EXECUTABLE}")
+  else()
+    get_property(
+      _gtwrap_python_executable
+      CACHE PYTHON_EXECUTABLE
+      PROPERTY VALUE)
+  endif()
+  if(NOT "${_gtwrap_python_executable}" STREQUAL "")
+    set(
+      PYTHON_EXECUTABLE
+      "${_gtwrap_python_executable}"
+      PARENT_SCOPE)
+  endif()
+
   set(_configured_wrap_root "${${_gtwrap_root_var_name}}")
   if(NOT "${_configured_wrap_root}" STREQUAL "" AND
      NOT EXISTS "${_configured_wrap_root}/cmake/PybindWrap.cmake")
@@ -374,21 +353,13 @@ function(configure_gtwrappers_common)
     endif()
   endif()
   if(_local_wrap_root)
-    if(GTWRAP_SYNC_TO_MASTER)
+    if(GTWRAP_SYNC_TO_MASTER AND GTWRAP_MAINTENANCE_UPDATE)
       sync_wrap_checkout("${_local_wrap_root}" "${GTWRAP_BRANCH}")
     endif()
     message(STATUS "Using local wrap checkout: ${_local_wrap_root}")
 
-    if(${${_gtwrap_matlab_option_name}} AND
-       EXISTS "${_local_wrap_root}/templates/matlab_wrapper.tpl.in")
-      get_filename_component(_local_wrap_include_name "${_local_wrap_root}" NAME)
-      file(READ "${_local_wrap_root}/templates/matlab_wrapper.tpl.in"
-           _local_matlab_wrapper_template)
-      string(REPLACE "\${GTWRAP_INCLUDE_NAME}" "${_local_wrap_include_name}"
-             _local_matlab_wrapper_template "${_local_matlab_wrapper_template}")
-      file(WRITE "${_local_wrap_root}/gtwrap/matlab_wrapper/matlab_wrapper.tpl"
-           "${_local_matlab_wrapper_template}")
-    endif()
+    # Current gtwrap configures the MATLAB include template in memory. Keep the
+    # resolved checkout read-only and let the wrapper frontend own that logic.
 
     list(APPEND CMAKE_MODULE_PATH "${_local_wrap_root}/cmake")
     set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}" PARENT_SCOPE)
@@ -501,7 +472,18 @@ function(configure_gtwrappers_common)
         get_filename_component(_installed_matlab_h_dir "${_installed_matlab_h}" DIRECTORY)
         get_filename_component(_installed_matlab_h_parent "${_installed_matlab_h_dir}" DIRECTORY)
 
-        if(_installed_matlab_h_dir MATCHES "/(wrap|gtwrap)$")
+        if(_installed_matlab_h_dir MATCHES "/gtwrap$")
+          # Older generators emit <wrap/matlab.h> even when the installed
+          # package uses include/gtwrap. Bridge that spelling in the build tree
+          # without mutating the external installation.
+          set(_installed_wrap_include_root
+              "${PROJECT_BINARY_DIR}/gtwrap_include_bridge")
+          file(MAKE_DIRECTORY "${_installed_wrap_include_root}/wrap")
+          configure_file(
+            "${_installed_matlab_h}"
+            "${_installed_wrap_include_root}/wrap/matlab.h"
+            COPYONLY)
+        elseif(_installed_matlab_h_dir MATCHES "/wrap$")
           set(_installed_wrap_include_root "${_installed_matlab_h_parent}")
         else()
           set(_installed_wrap_include_root "${_installed_matlab_h_dir}")
@@ -516,8 +498,7 @@ function(configure_gtwrappers_common)
       message(FATAL_ERROR
         "Could not locate wrap/gtwrap. Provide a local checkout at 'wrap/' or 'lib/wrap/', "
         "or set ${_gtwrap_root_var_name}=<path>, or install gtwrap so find_package(gtwrap) succeeds. "
-        "Set GTWRAP_INIT_SUBMODULE_IF_MISSING=ON to allow submodule initialization when declared in .gitmodules, "
-        "or GTWRAP_ADD_SUBMODULE_IF_MISSING=ON to auto-add '${GTWRAP_SUBMODULE_PATH}' from '${GTWRAP_SUBMODULE_REPO}'.")
+        "Set GTWRAP_INIT_SUBMODULE_IF_MISSING=ON to initialize a wrap submodule already declared in .gitmodules.")
     endif()
   endif()
 
@@ -526,481 +507,12 @@ function(configure_gtwrappers_common)
   set(GTWRAP_INTERFACE_FILES "${_gtwrap_interface_files}" PARENT_SCOPE)
   set(GTWRAP_TOP_NAMESPACE "${${_gtwrap_top_namespace_var_name}}" PARENT_SCOPE)
   set(GTWRAP_EXTRA_DEPENDENCY_TARGETS "${${_gtwrap_extra_deps_var_name}}" PARENT_SCOPE)
+  set(GTWRAP_RUNTIME_DEPENDENCY_TARGETS
+      "${${_gtwrap_runtime_deps_var_name}}"
+      PARENT_SCOPE)
 endfunction()
 
-# Python wrapper configuration using gtwrap
-function(configure_python_gtwrapper)
-  message(STATUS "Configuring Python wrap...")
-
-  if(NOT GTWRAP_INTERFACE_FILES)
-    message(FATAL_ERROR "GTWRAP_INTERFACE_FILES is empty. Cannot build Python wrapper.")
-  endif()
-
-  if(NOT COMMAND pybind_wrap)
-    include(PybindWrap)
-  endif()
-
-  # Resolve Python executable for gtwrap custom commands, with preference for user override
-  set(_resolved_python_executable "")
-  if(DEFINED Python_EXECUTABLE AND NOT "${Python_EXECUTABLE}" STREQUAL "")
-    set(_resolved_python_executable "${Python_EXECUTABLE}")
-  else()
-    get_property(_cached_python_executable CACHE PYTHON_EXECUTABLE PROPERTY VALUE)
-    if(NOT "${_cached_python_executable}" STREQUAL "")
-      set(_resolved_python_executable "${_cached_python_executable}")
-    endif()
-  endif()
-  if(NOT "${_resolved_python_executable}" STREQUAL "")
-    set(PYTHON_EXECUTABLE "${_resolved_python_executable}")
-  endif()
-
-  # Set gtwrap directory to use 
-  set(_gtwrap_package_dir "")
-  if(DEFINED GTWRAP_PACKAGE_DIR AND NOT "${GTWRAP_PACKAGE_DIR}" STREQUAL "")
-    set(_gtwrap_package_dir "${GTWRAP_PACKAGE_DIR}")
-  elseif(DEFINED GTWRAP_PYTHON_PACKAGE_DIR AND
-         NOT "${GTWRAP_PYTHON_PACKAGE_DIR}" STREQUAL "")
-    set(_gtwrap_package_dir "${GTWRAP_PYTHON_PACKAGE_DIR}")
-  elseif(DEFINED GTWRAP_ROOT_DIR AND NOT "${GTWRAP_ROOT_DIR}" STREQUAL "")
-    set(_gtwrap_package_dir "${GTWRAP_ROOT_DIR}")
-  endif()
-
-  if(NOT "${_gtwrap_package_dir}" STREQUAL "")
-    set(GTWRAP_PACKAGE_DIR "${_gtwrap_package_dir}" CACHE INTERNAL
-        "Path used by gtwrap pybind custom commands for PYTHONPATH." FORCE)
-    set(GTWRAP_PACKAGE_DIR "${_gtwrap_package_dir}")
-  endif()
-
-  # Ensure pybind11 is available if targets are not found in the current build
-  if(NOT COMMAND pybind11_add_module AND
-     NOT TARGET pybind11_headers AND
-     NOT TARGET pybind11::headers AND
-     NOT TARGET pybind11::module)
-    find_package(pybind11 CONFIG QUIET)
-  endif()
-
-  # Define command to generate Python wrapper using gtwrap's pybind_wrap function if not found
-  if(NOT COMMAND pybind11_add_module)
-
-    function(pybind11_add_module target_name)
-      add_library(${target_name} MODULE ${ARGN})
-      set_target_properties(${target_name} PROPERTIES PREFIX "")
-
-      if(TARGET pybind11::module)
-        target_link_libraries(${target_name} PRIVATE pybind11::module)
-      elseif(TARGET pybind11::pybind11)
-        target_link_libraries(${target_name} PRIVATE pybind11::pybind11)
-      elseif(DEFINED GTWRAP_ROOT_DIR AND EXISTS "${GTWRAP_ROOT_DIR}/pybind11/include")
-        target_include_directories(${target_name} PRIVATE "${GTWRAP_ROOT_DIR}/pybind11/include")
-      endif()
-
-      if(TARGET Python::Module)
-        target_link_libraries(${target_name} PRIVATE Python::Module)
-      elseif(TARGET Python3::Module)
-        target_link_libraries(${target_name} PRIVATE Python3::Module)
-      endif()
-    endfunction()
-  endif()
-
-  # Throw fatal error if not available
-  if(NOT COMMAND pybind11_add_module)
-    message(FATAL_ERROR
-      "pybind11_add_module is unavailable. Ensure pybind11 is loaded from gtwrap root or installed with CMake config files.")
-  endif()
-
-  # Set up Python package and build directories, and ensure __init__.py exists for the package
-  set(_python_package_name "${PROJECT_NAME}")
-  if(DEFINED PROJECT_PYTHON_PACKAGE_NAME AND NOT "${PROJECT_PYTHON_PACKAGE_NAME}" STREQUAL "")
-    set(_python_package_name "${PROJECT_PYTHON_PACKAGE_NAME}")
-  endif()
-
-  set(PROJECT_PYTHON_SOURCE_DIR "${PROJECT_SOURCE_DIR}/python")
-  set(PROJECT_PYTHON_PACKAGE_DIR "${PROJECT_PYTHON_SOURCE_DIR}/${_python_package_name}")
-  set(PROJECT_PYTHON_BUILD_DIRECTORY "${PROJECT_BINARY_DIR}/python")
-  set(PROJECT_PYTHON_BUILD_PACKAGE_DIR "${PROJECT_PYTHON_BUILD_DIRECTORY}/${_python_package_name}")
-  set(PROJECT_PYTHON_SOURCE_METADATA_FILE "${PROJECT_PYTHON_SOURCE_DIR}/pyproject.toml")
-  set(PROJECT_PYTHON_SOURCE_SETUP_FILE "${PROJECT_PYTHON_SOURCE_DIR}/setup.py")
-  set(PROJECT_PYTHON_WRAPPER_LINK_FILE "${PROJECT_PYTHON_PACKAGE_DIR}/_wrapper_build.py")
-  set(PROJECT_PYTHON_TARGET_NAME "${LIB_NAMESPACE}_py")
-  set(${PROJECT_NAME}_PYTHON_WRAPPER_TARGET "${PROJECT_PYTHON_TARGET_NAME}" CACHE INTERNAL
-      "Resolved Python wrapper target name for the project." FORCE)
-
-  if(NOT EXISTS "${PROJECT_PYTHON_PACKAGE_DIR}")
-    message(WARNING
-      "Missing python package directory '${PROJECT_PYTHON_PACKAGE_DIR}'. Creating it.")
-    file(MAKE_DIRECTORY "${PROJECT_PYTHON_PACKAGE_DIR}")
-  endif()
-
-  if(NOT EXISTS "${PROJECT_PYTHON_PACKAGE_DIR}/__init__.py")
-    string(CONFIGURE [=[
-"""Python package entrypoint for @PROJECT_PYTHON_PACKAGE_NAME@ bindings."""
-
-from __future__ import annotations
-
-HAS_WRAPPER = False
-WRAPPER_IMPORT_ERROR: ImportError | None = None
-
-try:
-    from .@PROJECT_PYTHON_PACKAGE_NAME@ import *  # noqa: F401,F403
-except ImportError as exc:
-    WRAPPER_IMPORT_ERROR = exc
-else:
-    HAS_WRAPPER = True
-]=] _default_python_package_init @ONLY)
-    file(WRITE
-      "${PROJECT_PYTHON_PACKAGE_DIR}/__init__.py"
-      "${_default_python_package_init}")
-  endif()
-
-  file(MAKE_DIRECTORY "${PROJECT_PYTHON_BUILD_DIRECTORY}")
-
-  # Write pyproject.toml for the source Python package so `pip install python/` is the public entrypoint.
-  set(_pyproject_template "${PROJECT_PYTHON_SOURCE_DIR}/pyproject.toml.in")
-
-  if(NOT EXISTS "${_pyproject_template}")
-    message(WARNING
-      "Missing python/pyproject.toml.in. Generating a minimal fallback template.")
-    set(_pyproject_template "${PROJECT_BINARY_DIR}/python/pyproject.toml.in.fallback")
-    file(WRITE "${_pyproject_template}" [=[
-[build-system]
-requires = ["setuptools>=61"]
-build-backend = "setuptools.build_meta"
-
-[project]
-name = "@PROJECT_PYTHON_PACKAGE_NAME@"
-version = "@PROJECT_VERSION@"
-description = "Python bindings for @PROJECT_NAME@"
-requires-python = ">=3.8"
-
-[tool.setuptools]
-packages = ["@PROJECT_PYTHON_PACKAGE_NAME@"]
-include-package-data = true
-
-[tool.setuptools.package-data]
-"@PROJECT_PYTHON_PACKAGE_NAME@" = ["*.so", "*.pyd", "*.dylib", "*.pyi", "**/*.pyi"]
-]=])
-  endif()
-
-  configure_file(
-    "${_pyproject_template}"
-    "${PROJECT_PYTHON_SOURCE_METADATA_FILE}"
-    @ONLY)
-
-  set(_python_metadata_file "${PROJECT_PYTHON_SOURCE_METADATA_FILE}")
-
-  # Write setup.py into the source python directory so the source package remains the install entrypoint.
-  set(_setup_py_template "${PROJECT_PYTHON_SOURCE_DIR}/setup.py.in")
-  if(EXISTS "${_setup_py_template}")
-    configure_file(
-      "${_setup_py_template}"
-      "${PROJECT_PYTHON_SOURCE_SETUP_FILE}"
-      @ONLY)
-  else()
-    set(_generated_setup_py_template "${PROJECT_BINARY_DIR}/python/setup.py.in.fallback")
-    file(WRITE "${_generated_setup_py_template}" [=[
-from setuptools import setup
-
-setup(zip_safe=False)
-]=])
-    configure_file(
-      "${_generated_setup_py_template}"
-      "${PROJECT_PYTHON_SOURCE_SETUP_FILE}"
-      @ONLY)
-  endif()
-
-  # This is required to avoid an error in modern pybind11 cmake scripts.
-  if(POLICY CMP0057)
-    cmake_policy(SET CMP0057 NEW)
-  endif()
-
-  set(_top_namespace "${GTWRAP_TOP_NAMESPACE}")
-  if("${_top_namespace}" STREQUAL "")
-    set(_top_namespace "${_python_package_name}")
-  endif()
-
-  set(_link_libs "${LIBNAME_WRAP_TARGET}")
-  set(_wrapper_dependencies "${LIBNAME_WRAP_TARGET}")
-
-  if(GTWRAP_EXTRA_DEPENDENCY_TARGETS)
-    list(APPEND _wrapper_dependencies ${GTWRAP_EXTRA_DEPENDENCY_TARGETS})
-  endif()
-
-  list(REMOVE_DUPLICATES _wrapper_dependencies)
-
-  # wrap expects these customization headers for each interface; seed stubs in build tree.
-  set(_pywrap_codegen_root "${PROJECT_BINARY_DIR}/${_python_package_name}")
-  file(MAKE_DIRECTORY "${_pywrap_codegen_root}/specializations")
-  file(MAKE_DIRECTORY "${_pywrap_codegen_root}/preamble")
-
-  # Generate empty specialization and preamble headers for each interface to avoid build errors if not existing
-  foreach(_interface_file IN LISTS GTWRAP_INTERFACE_FILES)
-    get_filename_component(_interface_name "${_interface_file}" NAME_WE)
-    set(_spec_header "${_pywrap_codegen_root}/specializations/${_interface_name}.h")
-    set(_preamble_header "${_pywrap_codegen_root}/preamble/${_interface_name}.h")
-    if(NOT EXISTS "${_spec_header}")
-      file(WRITE "${_spec_header}" "// Optional pybind specialization hooks for ${_interface_name}.\n")
-    endif()
-    if(NOT EXISTS "${_preamble_header}")
-      file(WRITE "${_preamble_header}" "// Optional pybind preamble hooks for ${_interface_name}.\n")
-    endif()
-  endforeach()
-
-  # Configure template for pybind module
-  set(_pybind_module_template "${PROJECT_BINARY_DIR}/${_python_package_name}.tpl")
-  if(EXISTS "${PROJECT_SOURCE_DIR}/python/${_python_package_name}.tpl")
-    # Use the template from the source tree if it exists
-    configure_file(
-      "${PROJECT_SOURCE_DIR}/python/${_python_package_name}.tpl"
-      "${_pybind_module_template}"
-      COPYONLY)
-  
-  elseif(EXISTS "${PROJECT_SOURCE_DIR}/${_python_package_name}.tpl")
-    # Fallback to looking for a template in the project root if not in python/
-    configure_file(
-      "${PROJECT_SOURCE_DIR}/${_python_package_name}.tpl"
-      "${_pybind_module_template}"
-      COPYONLY)
-
-  else()
-    # Else write it
-    file(WRITE "${_pybind_module_template}" [=[
-#include <pybind11/eigen.h>
-#include <pybind11/stl.h>
-#include <pybind11/stl_bind.h>
-#include <pybind11/pybind11.h>
-#include <pybind11/operators.h>
-#include <pybind11/iostream.h>
-#include <pybind11/functional.h>
-
-{includes}
-
-{boost_class_export}
-
-using namespace std;
-
-namespace py = pybind11;
-
-{submodules}
-
-{module_def} {{
-    m_.doc() = "pybind11 wrapper of {module_name}";
-
-{submodules_init}
-
-{wrapped_namespace}
-
-}}
-]=])
-  endif()
-  
-  set(ENABLE_BOOST_SERIALIZATION OFF)
-  
-  # Get the main interface file and deduce names
-  list(GET GTWRAP_INTERFACE_FILES 0 _main_interface_file)
-  get_filename_component(_main_interface_name "${_main_interface_file}" NAME_WE)
-  set(_main_interface_cpp "${_main_interface_name}.cpp")
-  set(GTWRAP_PYTHON_GENERATED_CPP_DIR "python")
-
-  # Call pybind wrapper generation function from gtwrap
-  pybind_wrap(${PROJECT_PYTHON_TARGET_NAME}
-            "${GTWRAP_INTERFACE_FILES}"
-            "${_main_interface_cpp}"
-            "${_python_package_name}"
-            "${_top_namespace}"
-            ""
-            "${_pybind_module_template}"
-            "${_link_libs}"
-            "${_wrapper_dependencies}"
-            ${ENABLE_BOOST_SERIALIZATION}
-          )
-
-  # Set python target properties, include directories, and installation rules
-  set_python_target_properties(
-    ${PROJECT_PYTHON_TARGET_NAME}
-    "${_python_package_name}"
-    "${PROJECT_PYTHON_BUILD_PACKAGE_DIR}")
-  target_include_directories(${PROJECT_PYTHON_TARGET_NAME}
-    PRIVATE
-      "${PROJECT_BINARY_DIR}"
-      "${PROJECT_PYTHON_BUILD_DIRECTORY}")
-
-  set(_python_wrapper_link_content
-"\"\"\"Generated by CMake. Tracks the latest requested Python wrapper build.\"\"\"
-
-WRAPPER_MODULE_PATH = r\"$<TARGET_FILE:${PROJECT_PYTHON_TARGET_NAME}>\"
-WRAPPER_LIBRARY_DIRS = [r\"${PROJECT_BINARY_DIR}/src\"]
-")
-  file(GENERATE
-    OUTPUT "${PROJECT_PYTHON_WRAPPER_LINK_FILE}"
-    CONTENT "${_python_wrapper_link_content}")
-
-  # Resolve Python install directories to support CMake installs directly into active env site-packages.
-  set(_python_install_sitearch "")
-  set(_python_install_sitelib "")
-  execute_process(
-    COMMAND ${PYTHON_EXECUTABLE} -c "import sysconfig; print(sysconfig.get_path('platlib') or '')"
-    OUTPUT_VARIABLE _python_install_sitearch
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    RESULT_VARIABLE _python_install_sitearch_result
-  )
-  execute_process(
-    COMMAND ${PYTHON_EXECUTABLE} -c "import sysconfig; print(sysconfig.get_path('purelib') or '')"
-    OUTPUT_VARIABLE _python_install_sitelib
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    RESULT_VARIABLE _python_install_sitelib_result
-  )
-
-  set(_python_install_root "python")
-  if(_python_install_sitearch_result EQUAL 0 AND NOT "${_python_install_sitearch}" STREQUAL "")
-    set(_python_install_root "${_python_install_sitearch}")
-  elseif(_python_install_sitelib_result EQUAL 0 AND NOT "${_python_install_sitelib}" STREQUAL "")
-    set(_python_install_root "${_python_install_sitelib}")
-  endif()
-
-  # Add import test for python module if enabled
-  if(ENABLE_TESTS AND BUILD_TESTING)
-    set(_python_import_test_name "${LIB_NAMESPACE}_python_import")
-    set(_python_import_test_code
-        "import ${_python_package_name} as module_
-assert getattr(module_, 'HAS_WRAPPER', False), getattr(module_, 'WRAPPER_IMPORT_ERROR', None)
-keypoint_ = module_.SFeatureLocation2D()
-keypoint_.u = 1.0
-keypoint_.v = 2.0
-track_ = module_.CFeatureTrack2D(7)
-assert track_.addKeypointToTrack(keypoint_, 3) is False
-assert track_.getFrameIDs() == [3]
-assert track_.getKeypointAtFrame(3).u == 1.0
-bundle_ = module_.CFeatureTrackBundle2D()
-track_id_ = bundle_.allocateTrackWithInitialObservation(keypoint_, 4)
-assert bundle_.getFrameIDs(track_id_) == [4]
-graph_ = module_.CCovisibilityGraphWrapper()
-graph_.pushFrame(1)
-graph_.addVisibilityLinks(1, [3, 1, 3])
-assert graph_.getVisibleFeatures(1) == [1, 3]")
-    add_test(
-      NAME ${_python_import_test_name}
-      COMMAND
-        ${CMAKE_COMMAND} -E env
-        "PYTHONPATH=${PROJECT_PYTHON_SOURCE_DIR}:$ENV{PYTHONPATH}"
-        "LD_LIBRARY_PATH=${PROJECT_BINARY_DIR}/src:$ENV{LD_LIBRARY_PATH}"
-        ${PYTHON_EXECUTABLE} -c "${_python_import_test_code}")
-    set_tests_properties(
-      ${_python_import_test_name}
-      PROPERTIES
-        WORKING_DIRECTORY "${PROJECT_PYTHON_SOURCE_DIR}")
-  endif()
-
-  install(
-    TARGETS ${PROJECT_PYTHON_TARGET_NAME}
-    LIBRARY DESTINATION "${_python_install_root}/${_python_package_name}")
-
-  install(
-    DIRECTORY "${PROJECT_PYTHON_PACKAGE_DIR}/"
-    DESTINATION "${_python_install_root}/${_python_package_name}")
-
-  if(NOT "${_python_metadata_file}" STREQUAL "")
-    install(
-      FILES "${_python_metadata_file}"
-      DESTINATION "${_python_install_root}")
-  endif()
-
-  # Convenience target: install the source Python package after it has been linked to the latest wrapper build.
-  set(_python_pip_install_target "${LIB_NAMESPACE}_python-install")
-  if(NOT TARGET ${_python_pip_install_target})
-    add_custom_target(
-      ${_python_pip_install_target}
-      COMMAND ${PYTHON_EXECUTABLE} -c "import subprocess, sys; cmd=[sys.executable, '-m', 'pip', 'install', '--no-build-isolation', '--no-deps', '.']; subprocess.check_call(cmd)"
-      DEPENDS ${PROJECT_PYTHON_TARGET_NAME}
-      WORKING_DIRECTORY "${PROJECT_PYTHON_SOURCE_DIR}"
-      VERBATIM)
-  endif()
-
-  if(BUILD_AS_MAIN_PROJECT AND NOT TARGET python-install)
-    add_custom_target(python-install DEPENDS ${_python_pip_install_target})
-  endif()
-
-  # Set python stubs generation target using pybind11-stubgen
-  set(_python_stubs_target "${LIB_NAMESPACE}_python-stubs")
-  if(NOT TARGET ${_python_stubs_target})
-    add_custom_target(
-      ${_python_stubs_target}
-      COMMAND
-        ${CMAKE_COMMAND} -E env
-        "PYTHONPATH=${PROJECT_PYTHON_SOURCE_DIR}:$ENV{PYTHONPATH}"
-        ${PYTHON_EXECUTABLE} -m pybind11_stubgen ${_python_package_name} -o .
-      DEPENDS ${PROJECT_PYTHON_TARGET_NAME}
-      WORKING_DIRECTORY "${PROJECT_PYTHON_SOURCE_DIR}"
-      VERBATIM)
-  endif()
-
-  # Add python stubs if building as main project
-  if(BUILD_AS_MAIN_PROJECT)
-    if(NOT TARGET python-stubs)
-      add_custom_target(python-stubs DEPENDS ${_python_stubs_target})
-    endif()
-  endif()
-
-endfunction()
-
-##################################################################################################
-# MATLAB wrapper configuration using gtwrap
-function(configure_matlab_gtwrapper)
-  message(STATUS "Configuring MATLAB wrap...")
-
-  if(NOT GTWRAP_INTERFACE_FILES)
-    message(FATAL_ERROR "GTWRAP_INTERFACE_FILES is empty. Cannot build MATLAB wrapper.")
-  endif()
-
-  set(_resolved_python_executable "")
-  if(DEFINED Python_EXECUTABLE AND NOT "${Python_EXECUTABLE}" STREQUAL "")
-    set(_resolved_python_executable "${Python_EXECUTABLE}")
-  else()
-    get_property(_cached_python_executable CACHE PYTHON_EXECUTABLE PROPERTY VALUE)
-    if(NOT "${_cached_python_executable}" STREQUAL "")
-      set(_resolved_python_executable "${_cached_python_executable}")
-    endif()
-  endif()
-  if(NOT "${_resolved_python_executable}" STREQUAL "")
-    set(PYTHON_EXECUTABLE "${_resolved_python_executable}")
-  endif()
-
-  if(NOT COMMAND wrap_and_install_library)
-    include(MatlabWrap)
-  endif()
-
-  message(STATUS "Including MATLAB directories...")
-  find_package(Matlab REQUIRED)
-  set(MATLAB_MEX_INCLUDE "${Matlab_ROOT_DIR}/extern/include")
-
-  message(STATUS "MATLAB_MEX_INCLUDE directory: ${MATLAB_MEX_INCLUDE}")
-  message(STATUS "Matlab_MEX_LIBRARY directory: ${Matlab_MEX_LIBRARY}")
-  message(STATUS "Matlab_MX_LIBRARY directory: ${Matlab_MX_LIBRARY}")
-
-  include_directories(${Matlab_INCLUDE_DIRS})
-  include_directories(${MATLAB_MEX_INCLUDE})
-  if(DEFINED GTWRAP_INCLUDE_DIR)
-    include_directories(${GTWRAP_INCLUDE_DIR})
-  endif()
-
-  if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/matlab")
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/matlab")
-  endif()
-
-  set(WRAP_MEX_BUILD_STATIC_MODULE OFF)
-  set(WRAP_TOOLBOX_INSTALL_PATH "${CMAKE_CURRENT_SOURCE_DIR}/matlab")
-  set(WRAP_BUILD_TYPE_POSTFIXES OFF)
-
-  if(NOT DEFINED LIBNAME_WRAP_TARGET)
-    message(FATAL_ERROR
-      "LIBNAME_WRAP_TARGET variable is not defined. Cannot proceed with MATLAB wrapper build.")
-  endif()
-
-  message(STATUS "Using interface files: ${GTWRAP_INTERFACE_FILES}")
-  wrap_and_install_library("${GTWRAP_INTERFACE_FILES}" "${LIBNAME_WRAP_TARGET}" "" "" "" "" OFF)
-endfunction()
-
-##################################################################################################
-# Entry point function to handle gtwrap wrappers
+# Configure the enabled gtwrap language frontends for the current project.
 function(handle_gtwrappers)
   set(_gtwrap_python_option_name "${LIB_NAMESPACE}_BUILD_PYTHON_WRAPPER")
   set(_gtwrap_matlab_option_name "${LIB_NAMESPACE}_BUILD_MATLAB_WRAPPER")
@@ -1034,10 +546,4 @@ function(handle_gtwrappers)
   if(${${_gtwrap_matlab_option_name}})
     configure_matlab_gtwrapper()
   endif()
-endfunction()
-
-##################################################################################################
-### Python wrapper configuration using pybind11 directly
-# TODO
-function(handle_pybind11_wrapper)
 endfunction()

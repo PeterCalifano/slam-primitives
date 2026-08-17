@@ -16,6 +16,14 @@ from types import ModuleType
 
 HAS_WRAPPER = False
 WRAPPER_IMPORT_ERROR: ImportError | None = None
+_DLL_DIRECTORY_HANDLES: list[object] = []
+
+# Python 3.8+ requires explicit DLL search directories on Windows. Retain each
+# handle for the package lifetime so delay-loaded dependencies remain visible.
+if os.name == "nt":
+    _DLL_DIRECTORY_HANDLES.append(
+        os.add_dll_directory(str(Path(__file__).resolve().parent))
+    )
 
 
 def _export_wrapper_module(module_: ModuleType) -> None:
@@ -30,9 +38,15 @@ def _export_wrapper_module(module_: ModuleType) -> None:
 def _import_build_linked_wrapper() -> ModuleType:
     """Load a wrapper extension from the active CMake build tree.
 
-    CMake writes ``_wrapper_build.py`` next to this file when the wrapper target
-    is built. That lets developers import the source package directly, without
-    installing a wheel after every local rebuild.
+    CMake writes ``_wrapper_build.py`` into its staged build package when the
+    wrapper target is built. This keeps generated metadata out of the source
+    checkout while allowing direct imports without rebuilding a wheel.
+
+    Returns:
+        Loaded native wrapper module.
+
+    Raises:
+        ImportError: If metadata or its referenced native module is unavailable.
     """
     try:
         from . import _wrapper_build
@@ -44,10 +58,17 @@ def _import_build_linked_wrapper() -> ModuleType:
         raise ImportError(f"Build-linked wrapper module was not found at '{module_path_}'.")
 
     if os.name == "nt":
-        for dll_dir_ in getattr(_wrapper_build, "WRAPPER_LIBRARY_DIRS", []):
-            dll_path_ = Path(dll_dir_)
+        runtime_paths_ = getattr(
+            _wrapper_build,
+            "WRAPPER_RUNTIME_LIBRARY_PATHS",
+            [],
+        )
+        for runtime_path_ in runtime_paths_:
+            dll_path_ = Path(runtime_path_).parent
             if dll_path_.is_dir():
-                os.add_dll_directory(str(dll_path_))
+                _DLL_DIRECTORY_HANDLES.append(
+                    os.add_dll_directory(str(dll_path_))
+                )
 
     package_name_ = __name__.split(".")[-1]
     module_name_ = f"{__name__}.{package_name_}"

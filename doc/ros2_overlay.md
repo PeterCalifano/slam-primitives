@@ -47,8 +47,10 @@ CUDA is disabled by default. OptiX and PTX are intentionally unsupported.
 ## Metadata ownership
 
 The root `CMakeLists.txt` owns project description, homepage, maintainer,
-license, and version metadata. `PROJECT_METADATA_ONLY=ON` exposes those values
-without configuring a compiler or dependencies.
+license, and version metadata. `slam-primitives_METADATA_ONLY=ON` exposes those
+values without configuring a compiler or dependencies. The legacy
+`PROJECT_METADATA_ONLY` spelling is accepted only as a top-level compatibility
+alias.
 
 Before a normal overlay build, `generate_version.sh --sync-ros2` calls
 `ros2/tools/sync_package_metadata.py`. The synchronizer updates both manifests

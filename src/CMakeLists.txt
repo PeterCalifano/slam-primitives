@@ -35,25 +35,16 @@ install(FILES ${installable_headers}
 # Delete installable_headers
 unset(installable_headers)
 
-list(LENGTH srcLibFiles src_lib_files_count)
-if (src_lib_files_count EQUAL 0)
-  set(lib_is_header_only TRUE)
-  set(lib_link_scope INTERFACE)
-  set(lib_target_type "INTERFACE")
-  add_library(${lib_name} INTERFACE)
-else()
-  set(lib_is_header_only FALSE)
-  set(lib_link_scope PUBLIC)
-  if (BUILD_SHARED_LIBS)
-    set(lib_target_type "SHARED")
-  else()
-    set(lib_target_type "STATIC")
-  endif()
-
-  add_library(${lib_name} ${lib_target_type}
-              ${srcLibFiles})
-  set_target_properties(${lib_name} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(srcLibFiles)
+  message(FATAL_ERROR
+    "slam-primitives is header-only, but compiled implementation files were "
+    "found in src/: ${srcLibFiles}")
 endif()
+
+set(lib_is_header_only TRUE)
+set(lib_link_scope INTERFACE)
+set(lib_target_type "INTERFACE")
+add_library(${lib_name} INTERFACE)
 
 set_target_properties(${lib_name} PROPERTIES EXPORT_NAME ${project_name})
 
@@ -65,14 +56,6 @@ set(PROJECT_LIBRARY_KIND "${lib_target_type}" PARENT_SCOPE)
 if(NOT TARGET ${LIB_NAMESPACE}::${project_name})
   add_library(${LIB_NAMESPACE}::${project_name} ALIAS ${lib_name})
 endif()
-
-# Link sanitizer target only for in-tree builds to avoid export/install deps.
-if (NOT lib_is_header_only AND ENABLE_SANITIZERS AND SANITIZER_TARGET AND TARGET ${SANITIZER_TARGET})
-  target_link_libraries(${lib_name} PRIVATE ${SANITIZER_TARGET})
-endif()
-
-# If need to add other files after add_library, use:
-#target_sources(${lib_name} SHARED ${srcLibFiles})
 
 ### Link targets
 # Project include directories
@@ -86,15 +69,6 @@ endif()
 
 if (ENABLE_OPENGL)
   target_link_libraries(${lib_name} ${lib_link_scope} ${OPENGL_COMPILE_TARGET})
-endif()
-
-# Link profiling interface: gperftools always when found, compile flags only with ENABLE_PROFILING.
-if (NOT lib_is_header_only AND TARGET ${PROFILING_COMPILE_TARGET})
-  if (PROFILING_PROPAGATES_TO_CONSUMERS)
-    target_link_libraries(${lib_name} PUBLIC ${PROFILING_COMPILE_TARGET})
-  else()
-    target_link_libraries(${lib_name} PRIVATE ${PROFILING_COMPILE_TARGET})
-  endif()
 endif()
 
 #target_include_directories(${lib_name} INTERFACE ${interface_INCLUDE_DIRS} ) 

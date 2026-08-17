@@ -253,7 +253,8 @@ function(configure_gtwrappers_common)
   endif()
 
   set(SEARCH_DIR_WRAP "${CMAKE_CURRENT_SOURCE_DIR}/src")
-  set(_default_interface_file "${SEARCH_DIR_WRAP}/wrap_interface.i")
+  set(_default_interface_file
+      "${SEARCH_DIR_WRAP}/${PROJECT_PYTHON_PACKAGE_NAME}/wrapped/${PROJECT_PYTHON_PACKAGE_NAME}.i")
 
   option(${_gtwrap_autodiscover_option_name}
          "Automatically discover wrapper interface files under src/."

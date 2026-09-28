@@ -1,6 +1,6 @@
 #pragma once
-#include "slam_primitives/types/concepts.h"
-#include "slam_primitives/types/type_aliases.h"
+#include "slam-primitives/types/concepts.h"
+#include "slam-primitives/types/type_aliases.h"
 #include <bitset>
 #include <cstdint>
 #include <span>

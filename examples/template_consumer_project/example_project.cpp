@@ -1,6 +1,6 @@
 #include "example_project.h"
 
-#include <slam_primitives/logging/CLogger.h>
+#include <slam-primitives/logging/CLogger.h>
 
 int main()
 {

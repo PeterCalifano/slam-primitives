@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
-#include "slam_primitives/bundle/CFeatureSetBundle.h"
-#include "slam_primitives/feature_sets/CFeatureTrack.h"
-#include "slam_primitives/types/SFeatureLocation2D.h"
+#include "slam-primitives/bundle/CFeatureSetBundle.h"
+#include "slam-primitives/feature_sets/CFeatureTrack.h"
+#include "slam-primitives/types/SFeatureLocation2D.h"
 
 using namespace slam_primitives;
 using Track = CFeatureTrack<SFeatureLocation2D, 4>;

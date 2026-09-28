@@ -1,5 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
-#include "slam_primitives/containers/CCircularBuffer.h"
+#include "slam-primitives/containers/CCircularBuffer.h"
 
 using namespace slam_primitives;
 

@@ -1,4 +1,4 @@
-#include "slam_primitives/feature_sets/SFeatureTrackSnapshot.h"
+#include "slam-primitives/feature_sets/SFeatureTrackSnapshot.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>

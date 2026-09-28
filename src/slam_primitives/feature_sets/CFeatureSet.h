@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <span>
 #include <stdexcept>
-#include "slam_primitives/types/concepts.h"
+#include "slam-primitives/types/concepts.h"
 
 namespace slam_primitives
 {

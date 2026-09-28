@@ -1,6 +1,6 @@
 #pragma once
-#include "slam_primitives/containers/CCircularBuffer.h"
-#include "slam_primitives/types/type_aliases.h"
+#include "slam-primitives/containers/CCircularBuffer.h"
+#include "slam-primitives/types/type_aliases.h"
 #include <algorithm>
 #include <cstdint>
 #include <optional>

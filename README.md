@@ -86,12 +86,15 @@ add_executable(app main.cpp)
 target_link_libraries(app PRIVATE slam-primitives::slam-primitives)
 ```
 
+Public C++ headers use `<slam-primitives/...>` in build and install trees.
+The C++ namespace and Python/MATLAB module names remain `slam_primitives`.
+
 Minimal C++ example:
 
 ```cpp
-#include <slam_primitives/bundle/CFeatureSetBundle.h>
-#include <slam_primitives/feature_sets/CFeatureTrack.h>
-#include <slam_primitives/types/SFeatureLocation2D.h>
+#include <slam-primitives/bundle/CFeatureSetBundle.h>
+#include <slam-primitives/feature_sets/CFeatureTrack.h>
+#include <slam-primitives/types/SFeatureLocation2D.h>
 
 using namespace slam_primitives;
 
@@ -174,7 +177,7 @@ copying unrelated system libraries.
 ## Header-only Logging
 
 Consumers can opt into the dependency-free C++20 logger by including
-`slam_primitives/logging/CLogger.h`. It preserves the library's `INTERFACE`
+`slam-primitives/logging/CLogger.h`. It preserves the library's `INTERFACE`
 target model, has no spdlog dependency, and supports severity filtering,
 explicit colors, stream routing, environment configuration, and complete-line
 concurrent output. See

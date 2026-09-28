@@ -1,9 +1,9 @@
 #pragma once
 #include <catch2/catch_test_macros.hpp>
-#include "slam_primitives/types/SFeatureLocation2D.h"
-#include "slam_primitives/types/type_aliases.h"
-#include "slam_primitives/feature_sets/CFeatureTrack.h"
-#include "slam_primitives/bundle/CFeatureSetBundle.h"
+#include "slam-primitives/types/SFeatureLocation2D.h"
+#include "slam-primitives/types/type_aliases.h"
+#include "slam-primitives/feature_sets/CFeatureTrack.h"
+#include "slam-primitives/bundle/CFeatureSetBundle.h"
 
 namespace fixtures
 {

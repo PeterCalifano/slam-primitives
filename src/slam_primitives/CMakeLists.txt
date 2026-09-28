@@ -1,13 +1,10 @@
 # Discover and install all header files
 file(GLOB installable_headers "*.h" "*.cuh")
 
-# Get the relative path from the current project root
-file(RELATIVE_PATH relative_path_from_root
-     "${PROJECT_SOURCE_DIR}"
+# Preserve the module path beneath the public header prefix.
+file(RELATIVE_PATH relative_path_without_src
+     "${PROJECT_SOURCE_DIR}/src/slam_primitives"
      "${CMAKE_CURRENT_SOURCE_DIR}")
-
-# Remove the 'src/' prefix from the relative path if it exists
-string(REPLACE "src/" "" relative_path_without_src ${relative_path_from_root})
 
 # Add src files to library
 set(SRC_PATTERN "*.cpp; *.cu")
@@ -33,4 +30,5 @@ add_subdirectory(wrapped)
 set(srcLibFiles ${srcLibFiles} ${srcLibFiles_local} PARENT_SCOPE)
 
 # Install the header files to the relative path
-install(FILES ${installable_headers} DESTINATION include/${project_name}/${relative_path_without_src})
+install(FILES ${installable_headers}
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${project_name}/${relative_path_without_src})

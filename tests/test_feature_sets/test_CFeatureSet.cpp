@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
-#include "slam_primitives/feature_sets/CFeatureSet.h"
-#include "slam_primitives/types/SFeatureLocation2D.h"
+#include "slam-primitives/feature_sets/CFeatureSet.h"
+#include "slam-primitives/types/SFeatureLocation2D.h"
 
 using namespace slam_primitives;
 using Set = CFeatureSet<SFeatureLocation2D, 4>;

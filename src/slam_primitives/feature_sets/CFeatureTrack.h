@@ -4,9 +4,9 @@
 #include <optional>
 #include <span>
 #include "CFeatureSet.h"
-#include "slam_primitives/types/concepts.h"
-#include "slam_primitives/types/type_aliases.h"
-#include "slam_primitives/types/labeling_policies.h"
+#include "slam-primitives/types/concepts.h"
+#include "slam-primitives/types/type_aliases.h"
+#include "slam-primitives/types/labeling_policies.h"
 
 namespace slam_primitives
 {

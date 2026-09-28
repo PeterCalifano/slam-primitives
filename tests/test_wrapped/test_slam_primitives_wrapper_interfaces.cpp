@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 
-#include "slam_primitives/wrapped/slam_primitives_wrapper_interfaces.h"
+#include "slam-primitives/wrapped/slam_primitives_wrapper_interfaces.h"
 
 #include <vector>
 

@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
-#include "slam_primitives/covisibility/CCovisibilityGraph.h"
-#include "slam_primitives/types/type_aliases.h"
+#include "slam-primitives/covisibility/CCovisibilityGraph.h"
+#include "slam-primitives/types/type_aliases.h"
 
 using namespace slam_primitives;
 using Graph = CCovisibilityGraph<4>;

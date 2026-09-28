@@ -24,11 +24,11 @@
  * vector ergonomics.
  */
 
-#include "slam_primitives/bundle/CFeatureSetBundle.h"
-#include "slam_primitives/covisibility/CCovisibilityGraph.h"
-#include "slam_primitives/feature_sets/CFeatureTrack.h"
-#include "slam_primitives/types/SFeatureLocation2D.h"
-#include "slam_primitives/types/type_aliases.h"
+#include "slam-primitives/bundle/CFeatureSetBundle.h"
+#include "slam-primitives/covisibility/CCovisibilityGraph.h"
+#include "slam-primitives/feature_sets/CFeatureTrack.h"
+#include "slam-primitives/types/SFeatureLocation2D.h"
+#include "slam-primitives/types/type_aliases.h"
 
 #include <algorithm>
 #include <span>

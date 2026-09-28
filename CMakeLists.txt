@@ -390,16 +390,28 @@ set(installable_targets)
 # Define include target interface
 add_library(${project_name}_include INTERFACE)
 
-# Define include directories for install compatibility
-target_include_directories(${project_name}_include INTERFACE 
-                           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>  # Used during development
-                           #$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/lib/stb_PeterCdev>  
-                           #$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/lib/rapidyaml_PeterCdev>
-                           #$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/lib/gdt>
-                           #$<BUILD_INTERFACE:${CUDA_INCLUDE_DIRS}> 
-                           #$<BUILD_INTERFACE:${OpenCV_INCLUDE_DIRS}>  # Add OpenCV include directories
-                           $<INSTALL_INTERFACE:include/${project_name}>  # Used in installed projects
-)
+# Expose source headers under the repository-name prefix in build-tree packages.
+set(_project_build_include_root "${PROJECT_BINARY_DIR}/public_src_include")
+set(_project_generated_include_root "${PROJECT_BINARY_DIR}/generated_include")
+set(_project_build_header_link "${_project_build_include_root}/${project_name}")
+file(MAKE_DIRECTORY "${_project_build_include_root}"
+     "${_project_generated_include_root}/${project_name}")
+if(EXISTS "${_project_build_header_link}" AND NOT IS_SYMLINK "${_project_build_header_link}")
+  message(FATAL_ERROR "Build-tree include path is occupied: ${_project_build_header_link}")
+endif()
+if(IS_SYMLINK "${_project_build_header_link}")
+  file(REMOVE "${_project_build_header_link}")
+endif()
+file(CREATE_LINK "${PROJECT_SOURCE_DIR}/src/slam_primitives" "${_project_build_header_link}"
+     SYMBOLIC RESULT _project_header_link_result)
+if(NOT _project_header_link_result STREQUAL "0")
+  message(FATAL_ERROR "Cannot link build-tree headers: ${_project_header_link_result}")
+endif()
+
+target_include_directories(${project_name}_include INTERFACE
+                           $<BUILD_INTERFACE:${_project_generated_include_root}>
+                           $<BUILD_INTERFACE:${_project_build_include_root}>
+                           $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
 # Build/install tree for runtime programs: $ORIGIN/../lib
 target_link_options(${project_name}_include INTERFACE

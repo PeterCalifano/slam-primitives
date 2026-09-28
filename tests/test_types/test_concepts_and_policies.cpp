@@ -1,11 +1,11 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
-#include "slam_primitives/types/SFeatureLocation2D.h"
-#include "slam_primitives/types/concepts.h"
-#include "slam_primitives/types/labeling_policies.h"
-#include "slam_primitives/types/type_aliases.h"
-#include "slam_primitives/feature_sets/CFeatureSet.h"
-#include "slam_primitives/feature_sets/CFeatureTrack.h"
+#include "slam-primitives/types/SFeatureLocation2D.h"
+#include "slam-primitives/types/concepts.h"
+#include "slam-primitives/types/labeling_policies.h"
+#include "slam-primitives/types/type_aliases.h"
+#include "slam-primitives/feature_sets/CFeatureSet.h"
+#include "slam-primitives/feature_sets/CFeatureTrack.h"
 
 using namespace slam_primitives;
 

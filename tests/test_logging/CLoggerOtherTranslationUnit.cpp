@@ -3,7 +3,7 @@
 
 #include "CLoggerOtherTranslationUnit.h"
 
-#include <slam_primitives/logging/CLogger.h>
+#include <slam-primitives/logging/CLogger.h>
 
 #include <sstream>
 

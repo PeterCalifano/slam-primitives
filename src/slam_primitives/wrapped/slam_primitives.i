@@ -11,9 +11,9 @@ namespace slam_primitives {
 // the generated MATLAB surface uses gtwrap std.vector... handle classes. Plain
 // MATLAB numeric arrays are not supported by this interface yet.
 
-#include <slam_primitives/types/SFeatureLocation2D.h>
-#include <slam_primitives/types/type_aliases.h>
-#include <slam_primitives/wrapped/slam_primitives_wrapper_interfaces.h>
+#include <slam-primitives/types/SFeatureLocation2D.h>
+#include <slam-primitives/types/type_aliases.h>
+#include <slam-primitives/wrapped/slam_primitives_wrapper_interfaces.h>
 
 class SFeatureLocation2D {
   SFeatureLocation2D();

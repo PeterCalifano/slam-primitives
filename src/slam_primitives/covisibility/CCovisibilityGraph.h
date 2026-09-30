@@ -6,10 +6,12 @@
 #include "slam-primitives/types/identifiers.h"
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <optional>
 #include <span>
 #include <stdexcept>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace slam_primitives
@@ -17,16 +19,17 @@ namespace slam_primitives
 
     /// @brief Sliding-window covisibility graph for feature visibility tracking.
     ///
-    /// Maintains a circular buffer of the last MAX_FRAMES frames, each storing
+    /// Maintains a circular buffer of at most getWindowSize() frames, each storing
     /// the sorted set of feature IDs visible in that frame. Provides queries for
     /// per-frame visibility, pairwise covisibility (set intersection), and a
     /// reverse index from feature ID to frame slots.
     ///
+    /// The runtime window defaults to the fixed MAX_FRAMES storage capacity.
     /// When the window is full, pushFrame() evicts the oldest frame and its
     /// index entries. clearInactiveFeatures() removes stale feature IDs that are
     /// no longer active in the bundle.
     ///
-    /// @tparam MAX_FRAMES  Sliding window size (number of frames retained).
+    /// @tparam MAX_FRAMES Fixed storage capacity and maximum runtime window size.
     /// @tparam FeatureIDT  Identifier domain of visible features.
     template <uint32_t MAX_FRAMES = 64, BundleIdentifier FeatureIDT = SetID>
     class CCovisibilityGraph
@@ -44,28 +47,71 @@ namespace slam_primitives
             std::vector<IDType> visible_features;
         };
 
-        /// @brief Construct an empty covisibility graph.
+        /// @brief Construct an empty graph retaining up to MAX_FRAMES frames.
         CCovisibilityGraph() = default;
+
+        /// @brief Construct an empty graph with a runtime retention limit.
+        /// @param window_size Number of frames to retain, from 1 through MAX_FRAMES.
+        /// @throws std::invalid_argument For a limit outside the fixed capacity.
+        explicit CCovisibilityGraph(uint32_t window_size)
+        {
+            setWindowSize(window_size);
+        }
+
+        /// @brief Change retention, immediately removing oldest excess frames.
+        /// Increasing the limit preserves retained frames without restoring evicted
+        /// history. Trimming invalidates spans into removed frames and rebuilds logical
+        /// reverse-index slots once; references to this graph remain valid.
+        /// @param window_size Number of frames to retain, from 1 through MAX_FRAMES.
+        /// @throws std::invalid_argument Without mutation for an invalid limit.
+        void setWindowSize(uint32_t window_size)
+        {
+            if (window_size == 0U || window_size > MAX_FRAMES)
+            {
+                throw std::invalid_argument("CCovisibilityGraph: window size must be within fixed capacity");
+            }
+            const bool trimming = frames_.size() > window_size;
+            while (frames_.size() > window_size)
+            {
+                frames_.pop_front();
+            }
+            window_size_ = window_size;
+            if (trimming)
+            {
+                rebuildReverseIndex();
+            }
+        }
+
+        /// @brief Return the configured frame-retention limit, independent of frameCount().
+        [[nodiscard]] auto getWindowSize() const noexcept -> uint32_t
+        {
+            return window_size_;
+        }
 
         /// @brief Register a new frame in the sliding window.
         ///
         /// If the internal window is full, the oldest frame entry is evicted and
-        /// its reverse-index mappings are removed.
+        /// its reverse-index mappings are removed. Spans into that frame become invalid.
         /// @param id Frame identifier to append.
-        /// @throws std::invalid_argument If @p id already exists in the live window.
+        /// @throws std::invalid_argument Without mutation if @p id is already live,
+        /// including when that frame would otherwise be evicted by this insertion.
         void pushFrame(CFrameID id)
         {
             if (findFrameSlot(id))
             {
                 throw std::invalid_argument("CCovisibilityGraph: duplicate live frame ID");
             }
-            const bool evicting = frames_.full();
+            const bool evicting = frames_.size() == window_size_;
+            if (evicting)
+            {
+                frames_.pop_front();
+            }
             SFrameEntry entry;
             entry.frame_id = id;
             frames_.push_back(std::move(entry));
             if (evicting)
             {
-                // Logical slot numbers shift when the ring evicts its oldest frame.
+                // Removing the oldest frame shifts every retained logical slot.
                 rebuildReverseIndex();
             }
         }
@@ -217,6 +263,9 @@ namespace slam_primitives
         // PROTECTED DATA MEMBERS
         CCircularBuffer<SFrameEntry, MAX_FRAMES> frames_;
         std::unordered_map<IDType, std::vector<uint32_t>> feature_to_frame_slots_;
+
+      private:
+        uint32_t window_size_{MAX_FRAMES};
     };
 
 } // namespace slam_primitives

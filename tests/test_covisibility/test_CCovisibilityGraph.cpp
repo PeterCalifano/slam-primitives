@@ -1,14 +1,24 @@
+/// @file test_CCovisibilityGraph.cpp
+/// @brief Check typed visibility, runtime retention and reverse-index consistency.
 #include <catch2/catch_test_macros.hpp>
 #include "slam-primitives/covisibility/CCovisibilityGraph.h"
 #include "slam-primitives/types/identifiers.h"
+#include <algorithm>
+#include <cstdint>
 #include <limits>
+#include <stdexcept>
 #include <type_traits>
+#include <vector>
 
 using namespace slam_primitives;
 using Graph = CCovisibilityGraph<4>;
 using TrackGraph = CCovisibilityGraph<4, CFeatureTrackID>;
+/// @brief Test fixture exposing logical reverse slots without changing production visibility.
 struct SInspectableGraph : Graph
 {
+    using Graph::Graph;
+
+    /// @brief Copy a feature's reverse slots so tests can inspect eviction and trimming.
     [[nodiscard]] auto indexedSlots(SetID id) const -> std::vector<std::uint32_t>
     {
         auto it = feature_to_frame_slots_.find(id);
@@ -16,6 +26,115 @@ struct SInspectableGraph : Graph
     }
 };
 static_assert(std::is_same_v<decltype(TrackGraph::SFrameEntry{}.frame_id), CFrameID>);
+
+TEST_CASE("Covisibility runtime windows retain newest frames and current reverse slots", "[covisibility][window]")
+{
+    REQUIRE(Graph{}.getWindowSize() == 4U);
+    for (const auto limit : {1U, 2U, 4U})
+    {
+        SInspectableGraph graph{limit};
+        for (std::uint32_t frame = 0U; frame < 20U; ++frame)
+        {
+            graph.pushFrame(CFrameID{frame});
+            graph.addVisibilityLinks(CFrameID{frame}, std::vector<SetID>{42U, 100U + frame});
+            const auto count = std::min(frame + 1U, limit);
+            REQUIRE(graph.frameCount() == count);
+            std::vector<std::uint32_t> expected_slots;
+            for (std::uint32_t slot = 0U; slot < count; ++slot)
+            {
+                expected_slots.push_back(slot);
+            }
+            REQUIRE(graph.indexedSlots(42U) == expected_slots);
+            REQUIRE(graph.indexedSlots(100U + frame) == std::vector<std::uint32_t>{count - 1U});
+            if (frame >= limit)
+            {
+                REQUIRE(graph.getVisibleFeatures(CFrameID{frame - limit}).empty());
+                REQUIRE(graph.indexedSlots(100U + frame - limit).empty());
+            }
+            if (count > 1U)
+            {
+                REQUIRE(graph.getCovisibleFeatures(CFrameID{frame - 1U}, CFrameID{frame}) == std::vector<SetID>{42U});
+            }
+        }
+    }
+}
+
+TEST_CASE("Covisibility shrinking and growing preserve only retained history", "[covisibility][window]")
+{
+    SInspectableGraph graph;
+    for (std::uint32_t frame = 1U; frame <= 4U; ++frame)
+    {
+        graph.pushFrame(CFrameID{frame});
+        graph.addVisibilityLinks(CFrameID{frame}, std::vector<SetID>{7U, 100U + frame});
+    }
+    graph.setWindowSize(2U);
+    REQUIRE(graph.getWindowSize() == 2U);
+    REQUIRE(graph.frameCount() == 2U);
+    REQUIRE(graph.getVisibleFeatures(CFrameID{1U}).empty());
+    REQUIRE(graph.getVisibleFeatures(CFrameID{2U}).empty());
+    REQUIRE(graph.indexedSlots(101U).empty());
+    REQUIRE(graph.indexedSlots(102U).empty());
+    REQUIRE(graph.indexedSlots(7U) == std::vector<std::uint32_t>{0U, 1U});
+    REQUIRE(graph.getCovisibleFeatures(CFrameID{3U}, CFrameID{4U}) == std::vector<SetID>{7U});
+
+    // Even the oldest frame is still live at validation time; duplicate rejection must not evict it.
+    REQUIRE_THROWS_AS(graph.pushFrame(CFrameID{3U}), std::invalid_argument);
+    REQUIRE(graph.frameCount() == 2U);
+    REQUIRE_FALSE(graph.getVisibleFeatures(CFrameID{3U}).empty());
+    REQUIRE(graph.indexedSlots(7U) == std::vector<std::uint32_t>{0U, 1U});
+
+    graph.setWindowSize(4U);
+    REQUIRE(graph.frameCount() == 2U);
+    REQUIRE(graph.getVisibleFeatures(CFrameID{1U}).empty());
+    graph.pushFrame(CFrameID{5U});
+    graph.addVisibilityLinks(CFrameID{5U}, std::vector<SetID>{7U});
+    REQUIRE(graph.frameCount() == 3U);
+    REQUIRE(graph.indexedSlots(7U) == std::vector<std::uint32_t>{0U, 1U, 2U});
+    graph.setWindowSize(1U);
+    REQUIRE(graph.frameCount() == 1U);
+    REQUIRE(graph.indexedSlots(7U) == std::vector<std::uint32_t>{0U});
+    REQUIRE(graph.indexedSlots(104U).empty());
+    graph.setWindowSize(1U);
+    REQUIRE(graph.frameCount() == 1U);
+
+    auto copy = graph;
+    REQUIRE(copy.getWindowSize() == 1U);
+    copy.pushFrame(CFrameID{6U});
+    REQUIRE(copy.getVisibleFeatures(CFrameID{5U}).empty());
+    REQUIRE_FALSE(graph.getVisibleFeatures(CFrameID{5U}).empty());
+}
+
+TEST_CASE("Covisibility invalid window sizes do not mutate the graph", "[covisibility][window][validation]")
+{
+    SInspectableGraph graph{2U};
+    graph.pushFrame(CFrameID{0U});
+    graph.addVisibilityLinks(CFrameID{0U}, std::vector<SetID>{9U});
+    for (const auto invalid : {0U, 5U, std::numeric_limits<std::uint32_t>::max()})
+    {
+        REQUIRE_THROWS_AS(Graph{invalid}, std::invalid_argument);
+        REQUIRE_THROWS_AS(graph.setWindowSize(invalid), std::invalid_argument);
+        REQUIRE(graph.getWindowSize() == 2U);
+        REQUIRE(graph.frameCount() == 1U);
+        REQUIRE(graph.getVisibleFeatures(CFrameID{0U}).front() == 9U);
+        REQUIRE(graph.indexedSlots(9U) == std::vector<std::uint32_t>{0U});
+    }
+}
+
+TEST_CASE("Covisibility capacity one preserves typed IDs through runtime eviction", "[covisibility][window]")
+{
+    CCovisibilityGraph<1, CFeatureTrackID> graph{1U};
+    const auto last_frame = CFrameID{std::numeric_limits<std::uint32_t>::max()};
+    const std::vector<CFeatureTrackID> ids{CFeatureTrackID{(std::uint64_t{1} << 63U) + 17U}};
+    graph.pushFrame(CFrameID{0U});
+    graph.addVisibilityLinks(CFrameID{0U}, ids);
+    graph.pushFrame(last_frame);
+    REQUIRE(graph.getVisibleFeatures(CFrameID{0U}).empty());
+    graph.addVisibilityLinks(last_frame, ids);
+    REQUIRE(graph.frameCount() == 1U);
+    REQUIRE(graph.getLastFrameVisibility().front() == ids.front());
+    REQUIRE_THROWS_AS(graph.pushFrame(last_frame), std::invalid_argument);
+    REQUIRE(graph.getLastFrameVisibility().front() == ids.front());
+}
 
 TEST_CASE("Covisibility reverse slots stay unique and current after eviction", "[covisibility]")
 {

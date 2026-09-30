@@ -1,5 +1,13 @@
+/// @file test_CCircularBuffer.cpp
+/// @brief Check ring ordering, capacity, oldest removal and owned-value lifetimes.
 #include <catch2/catch_test_macros.hpp>
 #include "slam-primitives/containers/CCircularBuffer.h"
+
+#include <deque>
+#include <memory>
+#include <stdexcept>
+#include <utility>
+#include <vector>
 
 using namespace slam_primitives;
 
@@ -156,4 +164,80 @@ TEST_CASE("CCircularBuffer capacity", "[containers]")
 {
     CCircularBuffer<double, 8> buf;
     REQUIRE(CCircularBuffer<double, 8>::capacity() == 8);
+}
+
+TEST_CASE("CCircularBuffer oldest removal preserves wraparound and insertion", "[containers][window]")
+{
+    CCircularBuffer<int, 3> buffer;
+    std::deque<int> expected;
+    for (int value = 0; value < 100; ++value)
+    {
+        if (value % 3 == 0 && !expected.empty())
+        {
+            buffer.pop_front();
+            expected.pop_front();
+        }
+        else
+        {
+            buffer.push_back(value);
+            if (expected.size() == buffer.capacity())
+            {
+                expected.pop_front();
+            }
+            expected.push_back(value);
+        }
+        REQUIRE(buffer.size() == expected.size());
+        REQUIRE(std::vector<int>(buffer.begin(), buffer.end()) == std::vector<int>(expected.begin(), expected.end()));
+        if (!expected.empty())
+        {
+            REQUIRE(buffer.front() == expected.front());
+            REQUIRE(buffer.back() == expected.back());
+        }
+    }
+    while (!buffer.empty())
+    {
+        buffer.pop_front();
+    }
+    REQUIRE_THROWS_AS(buffer.pop_front(), std::out_of_range);
+    REQUIRE(buffer.empty());
+    buffer.push_back(101);
+    REQUIRE(buffer.front() == 101);
+    REQUIRE(buffer.back() == 101);
+}
+
+TEST_CASE("CCircularBuffer oldest removal supports capacity one", "[containers][window]")
+{
+    CCircularBuffer<int, 1> buffer;
+    REQUIRE_THROWS_AS(buffer.pop_front(), std::out_of_range);
+    for (int value = 1; value <= 3; ++value)
+    {
+        buffer.push_back(value);
+        REQUIRE(buffer.front() == value);
+        buffer.pop_front();
+        REQUIRE(buffer.empty());
+        REQUIRE_FALSE(buffer.full());
+    }
+}
+
+TEST_CASE("CCircularBuffer oldest removal releases ownership", "[containers][window][lifetime]")
+{
+    CCircularBuffer<std::shared_ptr<int>, 2> buffer;
+    auto first = std::make_shared<int>(1);
+    auto second = std::make_shared<int>(2);
+    const std::weak_ptr<int> first_observer = first;
+    const std::weak_ptr<int> second_observer = second;
+    buffer.push_back(std::move(first));
+    buffer.push_back(std::move(second));
+    buffer.pop_front();
+    REQUIRE(first_observer.expired());
+    REQUIRE_FALSE(second_observer.expired());
+    REQUIRE(*buffer.front() == 2);
+    buffer.pop_front();
+    REQUIRE(second_observer.expired());
+
+    CCircularBuffer<std::unique_ptr<int>, 2> move_only;
+    move_only.push_back(std::make_unique<int>(7));
+    move_only.pop_front();
+    move_only.push_back(std::make_unique<int>(8));
+    REQUIRE(*move_only.front() == 8);
 }

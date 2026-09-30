@@ -422,8 +422,26 @@ namespace slam_primitives
         /// @brief Native graph type wrapped by this facade.
         using GraphT = CCovisibilityGraph<64, CFeatureTrackID>;
 
-        /// @brief Construct an empty covisibility graph facade.
+        /// @brief Construct an empty graph facade with the native 64-frame limit.
         CCovisibilityGraphWrapper() = default;
+
+        /// @brief Construct an empty graph facade retaining 1 through 64 frames.
+        /// @throws std::invalid_argument For a limit outside the native capacity.
+        explicit CCovisibilityGraphWrapper(std::uint32_t window_size) : graph_(window_size) {}
+
+        /// @brief Change retention, dropping oldest excess frames immediately.
+        /// Increasing the limit does not restore evicted history. Invalid limits
+        /// throw std::invalid_argument without changing graph state.
+        void setWindowSize(std::uint32_t window_size)
+        {
+            graph_.setWindowSize(window_size);
+        }
+
+        /// @brief Return the configured retention limit rather than the current frame count.
+        [[nodiscard]] auto getWindowSize() const noexcept -> std::uint32_t
+        {
+            return graph_.getWindowSize();
+        }
 
         /// @brief Add a frame to the sliding covisibility window.
         void pushFrame(std::uint32_t id)

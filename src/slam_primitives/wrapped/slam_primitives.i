@@ -86,7 +86,10 @@ namespace slam_primitives
     class CCovisibilityGraphWrapper
     {
         CCovisibilityGraphWrapper();
+        CCovisibilityGraphWrapper(uint32_t window_size);
 
+        void setWindowSize(uint32_t window_size);
+        uint32_t getWindowSize() const;
         void pushFrame(uint32_t id);
         void addVisibilityLinks(uint32_t frame, const std::vector<uint64_t> &features);
         std::vector<uint64_t> getVisibleFeatures(uint32_t frame) const;

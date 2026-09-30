@@ -1,3 +1,5 @@
+/// @file test_slam_primitives_wrapper_interfaces.cpp
+/// @brief Check binding-facade identifier widths, conversion and runtime frame retention.
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 
@@ -6,6 +8,7 @@
 #include <vector>
 #include <cstdint>
 #include <limits>
+#include <stdexcept>
 #include <type_traits>
 #include <utility>
 
@@ -110,4 +113,30 @@ TEST_CASE("CCovisibilityGraphWrapper accepts high track IDs", "[wrapped]")
     graph.pushFrame(1);
     graph.addVisibilityLinks(1, {high_id});
     REQUIRE(graph.getVisibleFeatures(1) == std::vector<std::uint64_t>{high_id});
+}
+
+TEST_CASE("CCovisibilityGraphWrapper exposes validated runtime retention", "[wrapped][window]")
+{
+    REQUIRE(CCovisibilityGraphWrapper{}.getWindowSize() == 64U);
+    CCovisibilityGraphWrapper graph{2U};
+    const auto high_id = (std::uint64_t{1} << 53U) + 1U;
+    for (std::uint32_t frame = 0U; frame < 3U; ++frame)
+    {
+        graph.pushFrame(frame);
+        graph.addVisibilityLinks(frame, {high_id});
+    }
+    REQUIRE(graph.getVisibleFeatures(0U).empty());
+    REQUIRE(graph.getCovisibleFeatures(1U, 2U) == std::vector<std::uint64_t>{high_id});
+    graph.setWindowSize(1U);
+    REQUIRE(graph.getWindowSize() == 1U);
+    REQUIRE(graph.frameCount() == 1U);
+    REQUIRE(graph.getVisibleFeatures(1U).empty());
+    REQUIRE(graph.getVisibleFeatures(2U) == std::vector<std::uint64_t>{high_id});
+    for (const auto invalid : {0U, 65U, std::numeric_limits<std::uint32_t>::max()})
+    {
+        REQUIRE_THROWS_AS(CCovisibilityGraphWrapper{invalid}, std::invalid_argument);
+        REQUIRE_THROWS_AS(graph.setWindowSize(invalid), std::invalid_argument);
+        REQUIRE(graph.getWindowSize() == 1U);
+        REQUIRE(graph.getVisibleFeatures(2U) == std::vector<std::uint64_t>{high_id});
+    }
 }

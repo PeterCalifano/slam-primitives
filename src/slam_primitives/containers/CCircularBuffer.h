@@ -14,8 +14,7 @@ namespace slam_primitives
     ///
     /// @tparam T  Element type.
     /// @tparam N  Maximum number of elements (compile-time capacity).
-    template <typename T, uint32_t N>
-    class CCircularBuffer
+    template <typename T, uint32_t N> class CCircularBuffer
     {
       public:
         CCircularBuffer() = default;
@@ -44,8 +43,14 @@ namespace slam_primitives
         }
 
         // O(1) access to front and back elements
-        auto front() const -> const T & { return data_[start_]; }
-        auto front() -> T & { return data_[start_]; }
+        auto front() const -> const T &
+        {
+            return data_[start_];
+        }
+        auto front() -> T &
+        {
+            return data_[start_];
+        }
 
         auto back() const -> const T &
         {
@@ -60,10 +65,22 @@ namespace slam_primitives
         }
 
         // Size and capacity queries
-        auto size() const -> uint32_t { return size_; }
-        static constexpr auto capacity() -> uint32_t { return N; }
-        auto full() const -> bool { return size_ == N; }
-        auto empty() const -> bool { return size_ == 0; }
+        auto size() const -> uint32_t
+        {
+            return size_;
+        }
+        static constexpr auto capacity() -> uint32_t
+        {
+            return N;
+        }
+        auto full() const -> bool
+        {
+            return size_ == N;
+        }
+        auto empty() const -> bool
+        {
+            return size_ == 0;
+        }
 
         // Clear the buffer to an empty state
         void clear()
@@ -85,8 +102,14 @@ namespace slam_primitives
 
             Iterator(const CCircularBuffer *buf, uint32_t pos) : buf_(buf), pos_(pos) {}
 
-            auto operator*() const -> reference { return (*buf_)[pos_]; }
-            auto operator->() const -> pointer { return &(*buf_)[pos_]; }
+            auto operator*() const -> reference
+            {
+                return (*buf_)[pos_];
+            }
+            auto operator->() const -> pointer
+            {
+                return &(*buf_)[pos_];
+            }
 
             auto operator++() -> Iterator &
             {
@@ -101,16 +124,28 @@ namespace slam_primitives
                 return tmp;
             }
 
-            auto operator==(const Iterator &other) const -> bool { return pos_ == other.pos_; }
-            auto operator!=(const Iterator &other) const -> bool { return pos_ != other.pos_; }
+            auto operator==(const Iterator &other) const -> bool
+            {
+                return pos_ == other.pos_;
+            }
+            auto operator!=(const Iterator &other) const -> bool
+            {
+                return pos_ != other.pos_;
+            }
 
           private:
             const CCircularBuffer *buf_;
             uint32_t pos_;
         };
 
-        auto begin() const -> Iterator { return Iterator(this, 0); }
-        auto end() const -> Iterator { return Iterator(this, size_); }
+        auto begin() const -> Iterator
+        {
+            return Iterator(this, 0);
+        }
+        auto end() const -> Iterator
+        {
+            return Iterator(this, size_);
+        }
 
       private:
         // PRIVATE METHODS

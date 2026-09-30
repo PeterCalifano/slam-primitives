@@ -3,8 +3,9 @@
 `slam-primitives` is a header-only C++20 library for common visual-SLAM frontend data structures:
 
 - fixed-capacity feature sets and feature tracks
-- track bundles with monotonic `SetID` allocation
+- generic set bundles keyed by `SetID` and track bundles keyed by `CFeatureTrackID`
 - sliding-window covisibility graphs
+- validated camera views, image observations, and owning flat track batches
 - lightweight feature-location and LiDAR augmentation types
 
 The project is intentionally small and installable as a CMake package. CUDA, oneTBB, documentation, profiling flags, and Python wrapping are optional build surfaces; the core library only requires Eigen and a C++20 compiler.
@@ -94,7 +95,8 @@ Minimal C++ example:
 ```cpp
 #include <slam-primitives/bundle/CFeatureSetBundle.h>
 #include <slam-primitives/feature_sets/CFeatureTrack.h>
-#include <slam-primitives/types/SFeatureLocation2D.h>
+#include <slam-primitives/types/identifiers.h>
+#include <slam-primitives/types/feature_types.h>
 
 using namespace slam_primitives;
 
@@ -103,14 +105,54 @@ int main()
     using Track = CFeatureTrack<SFeatureLocation2D, 64>;
 
     CFeatureSetBundle<Track, 32> bundle;
-    Track track(0);
-    track.addKeypointToTrack({100.0, 200.0}, 0);
-    track.addKeypointToTrack({101.5, 201.2}, 1);
+    Track track;
+    track.addKeypointToTrack({100.0, 200.0}, CFrameID{0U});
+    track.addKeypointToTrack({101.5, 201.2}, CFrameID{1U});
 
-    const SetID id = bundle.allocate(std::move(track));
+    const CFeatureTrackID id = bundle.allocate(std::move(track));
     return bundle.get(id).getTrackLength() == 2 ? 0 : 1;
 }
 ```
+
+`SetID` remains the 64-bit ID of a generic `CFeatureSet`. Tracks use the
+distinct 64-bit `CFeatureTrackID`; a track bundle returns that type.
+`CFeatureSet` and `CFeatureTrack` are independent value types. A track stores
+each keypoint with its strictly increasing `CFrameID` through
+`addKeypointToTrack()`; it has no inherited keypoint-only mutation path. A new set
+or track has no assigned ID until its constructor, `setID()`, or bundle
+allocation assigns one. `getID()` throws on an unassigned object. A bundle
+preserves an assigned ID and rejects an active duplicate. For an unassigned
+object it generates a fresh ID above every ID previously inserted, starting at
+1. An explicit ID may be reused after its entry is freed; generated IDs are
+never reused. `checkedSetIDToUint32()` and `CFeatureTrackID::toUint32()` reject
+lossy narrowing.
+
+Native frame APIs use `CFrameID`, a valid unsigned 32-bit value that defaults
+to frame 0. The signed `FrameID` alias is only for checked conversion through
+`CFrameID::fromLegacy()` and `toLegacy()`; negative legacy values are rejected.
+Direct construction from signed or wider integers also checks for negative values
+and 32-bit overflow.
+
+Public headers are grouped by the contract they define:
+
+| Module/header | Contents |
+|---|---|
+| `types/identifiers.h` | Distinct set, track, and frame IDs; checked conversions; identifier constraints |
+| `types/feature_types.h` | Pixel locations, LiDAR data, and the `FeatureLocation` concept |
+| `camera/` | Pinhole calibration and calibrated camera views |
+| `feature_sets/labeling_policies.h` | Track labeling data and the `LabelingPolicy` concept |
+| `bundle/CFeatureSetBundle.h` | Bundle storage and the `BundleStorable` concept |
+| `detail/covariance_validation.h` | Internal covariance validation used by camera views and observations |
+
+Includes use the installed `slam-primitives/` prefix. Internal headers in `detail/`
+are installed for the public inline implementation; they are not an application API.
+
+The native data core also provides `CPinholeCameraCalibration`, `CCameraView`,
+`CImagePointObservation`, and `CFeatureTrackBatch`. Camera views use `CFrameID`
+and explicit world-to-camera geometry. Image observations own validated pixel
+covariance. A flat batch owns chronological observations grouped under sorted
+`CFeatureTrackID` values; its returned spans borrow the batch's storage.
+Numerical triangulation and application policy belong to consumers.
 
 The downstream package example is in `examples/template_consumer_project`. It requires an installed prefix and intentionally does not auto-build the parent repository.
 
@@ -165,6 +207,12 @@ The wrapper exposes Python-friendly feature-track, bundle, and covisibility flow
 - `CFeatureTrack2D`
 - `CFeatureTrackBundle2D`
 - `CCovisibilityGraphWrapper`
+
+These facades expose track IDs as numeric `uint64_t` and frame IDs as numeric
+`uint32_t`. `CFeatureTrackBundle2D` supports generated IDs through
+`allocateTrack()` and caller-supplied IDs through `allocateTrackWithID()`;
+both forms also accept an initial observation. Python vector results are
+ordinary lists after binding conversion.
 
 `import slam_primitives` always works from the source package. `HAS_WRAPPER` is `True` only when the compiled extension imports successfully; otherwise it remains `False` and `WRAPPER_IMPORT_ERROR` records the import failure.
 

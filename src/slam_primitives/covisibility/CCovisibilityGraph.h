@@ -1,6 +1,9 @@
+/// @file CCovisibilityGraph.h
+/// @brief Defines a frame window of visible typed feature identifiers.
+
 #pragma once
 #include "slam-primitives/containers/CCircularBuffer.h"
-#include "slam-primitives/types/type_aliases.h"
+#include "slam-primitives/types/identifiers.h"
 #include <algorithm>
 #include <cstdint>
 #include <optional>
@@ -24,18 +27,21 @@ namespace slam_primitives
     /// no longer active in the bundle.
     ///
     /// @tparam MAX_FRAMES  Sliding window size (number of frames retained).
-    template <uint32_t MAX_FRAMES = 64>
+    /// @tparam FeatureIDT  Identifier domain of visible features.
+    template <uint32_t MAX_FRAMES = 64, BundleIdentifier FeatureIDT = SetID>
     class CCovisibilityGraph
     {
       public:
+        using IDType = FeatureIDT; ///< Identifier domain indexed by the graph.
+
         /// @brief Per-frame record of visible feature IDs (kept sorted for fast intersection).
         struct SFrameEntry
         {
             /// @brief Frame identifier associated with this entry.
-            FrameID frame_id{-1};
+            CFrameID frame_id{};
 
             /// @brief Sorted list of feature IDs visible in @ref frame_id.
-            std::vector<SetID> visible_features;
+            std::vector<IDType> visible_features;
         };
 
         /// @brief Construct an empty covisibility graph.
@@ -46,17 +52,22 @@ namespace slam_primitives
         /// If the internal window is full, the oldest frame entry is evicted and
         /// its reverse-index mappings are removed.
         /// @param id Frame identifier to append.
-        void pushFrame(FrameID id)
+        /// @throws std::invalid_argument If @p id already exists in the live window.
+        void pushFrame(CFrameID id)
         {
-            if (frames_.full())
+            if (findFrameSlot(id))
             {
-                // Remove feature-to-slot mappings for the oldest frame being evicted
-                removeFrameFromIndex(0);
+                throw std::invalid_argument("CCovisibilityGraph: duplicate live frame ID");
             }
-
+            const bool evicting = frames_.full();
             SFrameEntry entry;
             entry.frame_id = id;
             frames_.push_back(std::move(entry));
+            if (evicting)
+            {
+                // Logical slot numbers shift when the ring evicts its oldest frame.
+                rebuildReverseIndex();
+            }
         }
 
         /// @brief Add frame-to-feature visibility links for an existing frame.
@@ -66,7 +77,7 @@ namespace slam_primitives
         /// the method performs no operation.
         /// @param frame Frame identifier that receives visibility links.
         /// @param features Feature IDs to mark as visible in @p frame.
-        void addVisibilityLinks(FrameID frame, std::span<const SetID> features)
+        void addVisibilityLinks(CFrameID frame, std::span<const IDType> features)
         {
             auto slot = findFrameSlot(frame);
             if (!slot.has_value())
@@ -83,10 +94,9 @@ namespace slam_primitives
                 if (pos == entry.visible_features.end() || *pos != fid)
                 {
                     entry.visible_features.insert(pos, fid);
+                    auto &slots = feature_to_frame_slots_[fid];
+                    slots.insert(std::lower_bound(slots.begin(), slots.end(), *slot), *slot);
                 }
-
-                // Update feature-to-frame index
-                feature_to_frame_slots_[fid].push_back(*slot);
             }
         }
 
@@ -94,26 +104,26 @@ namespace slam_primitives
         /// @param frame Frame identifier to query.
         /// @return Span over the frame's visible feature IDs, or an empty span if
         ///         the frame is not in the current window.
-        auto getVisibleFeatures(FrameID frame) const -> std::span<const SetID>
+        auto getVisibleFeatures(CFrameID frame) const -> std::span<const IDType>
         {
             auto slot = findFrameSlot(frame);
             if (!slot.has_value())
             {
                 return {};
             }
-            return std::span<const SetID>(frames_[*slot].visible_features);
+            return std::span<const IDType>(frames_[*slot].visible_features);
         }
 
         /// @brief Get visibility list for the most recently pushed frame.
         /// @return Span over the newest frame's visible features, or an empty span
         ///         if the graph contains no frames.
-        auto getLastFrameVisibility() const -> std::span<const SetID>
+        auto getLastFrameVisibility() const -> std::span<const IDType>
         {
             if (frames_.empty())
             {
                 return {};
             }
-            return std::span<const SetID>(frames_.back().visible_features);
+            return std::span<const IDType>(frames_.back().visible_features);
         }
 
         /// @brief Compute pairwise covisibility between two frames.
@@ -124,7 +134,7 @@ namespace slam_primitives
         /// @param a First frame identifier.
         /// @param b Second frame identifier.
         /// @return Sorted vector of feature IDs visible in both frames.
-        auto getCovisibleFeatures(FrameID a, FrameID b) const -> std::vector<SetID>
+        auto getCovisibleFeatures(CFrameID a, CFrameID b) const -> std::vector<IDType>
         {
             auto slot_a = findFrameSlot(a);
             auto slot_b = findFrameSlot(b);
@@ -136,9 +146,8 @@ namespace slam_primitives
             const auto &va = frames_[*slot_a].visible_features;
             const auto &vb = frames_[*slot_b].visible_features;
 
-            std::vector<SetID> result;
-            std::set_intersection(va.begin(), va.end(),
-                                  vb.begin(), vb.end(),
+            std::vector<IDType> result;
+            std::set_intersection(va.begin(), va.end(), vb.begin(), vb.end(),
                                   std::back_inserter(result));
             return result;
         }
@@ -148,34 +157,30 @@ namespace slam_primitives
         /// Prunes stale feature IDs from all frame visibility lists, then rebuilds
         /// the reverse index feature_to_frame_slots_.
         /// @param active_feature_ids Feature IDs that should be retained.
-        void clearInactiveFeatures(std::span<const SetID> active_feature_ids)
+        void clearInactiveFeatures(std::span<const IDType> active_feature_ids)
         {
             // Build active set for fast lookup
-            std::unordered_map<SetID, bool> active_set;
+            std::unordered_map<IDType, bool> active_set;
             for (auto id : active_feature_ids)
             {
                 active_set[id] = true;
             }
 
-            // Remove stale features from all frame entries and rebuild index
-            feature_to_frame_slots_.clear();
-
+            // Remove stale features from all frame entries and rebuild index.
             for (uint32_t i = 0; i < frames_.size(); ++i)
             {
                 auto &features = frames_[i].visible_features;
-                std::erase_if(features, [&](SetID fid)
-                              { return active_set.count(fid) == 0; });
-
-                for (auto fid : features)
-                {
-                    feature_to_frame_slots_[fid].push_back(i);
-                }
+                std::erase_if(features, [&](IDType fid) { return active_set.count(fid) == 0; });
             }
+            rebuildReverseIndex();
         }
 
         /// @brief Get the number of frames currently retained in the window.
         /// @return Number of frame entries in the graph.
-        auto frameCount() const -> uint32_t { return frames_.size(); }
+        auto frameCount() const -> uint32_t
+        {
+            return frames_.size();
+        }
 
       protected:
         // PROTECTED MEMBER FUNCTIONS
@@ -183,7 +188,7 @@ namespace slam_primitives
         /// @brief Locate the slot index of a frame in the circular window.
         /// @param frame Frame identifier to locate.
         /// @return Slot index if found, std::nullopt otherwise.
-        auto findFrameSlot(FrameID frame) const -> std::optional<uint32_t>
+        auto findFrameSlot(CFrameID frame) const -> std::optional<uint32_t>
         {
             for (uint32_t i = 0; i < frames_.size(); ++i)
             {
@@ -195,22 +200,15 @@ namespace slam_primitives
             return std::nullopt;
         }
 
-        /// @brief Remove reverse-index links associated with a frame slot.
-        /// @param slot Slot index to remove from feature_to_frame_slots_.
-        void removeFrameFromIndex(uint32_t slot)
+        /// @brief Rebuild reverse links using current logical ring positions.
+        void rebuildReverseIndex()
         {
-            const auto &features = frames_[slot].visible_features;
-            for (auto fid : features)
+            feature_to_frame_slots_.clear();
+            for (uint32_t slot = 0; slot < frames_.size(); ++slot)
             {
-                auto it = feature_to_frame_slots_.find(fid);
-                if (it != feature_to_frame_slots_.end())
+                for (auto fid : frames_[slot].visible_features)
                 {
-                    auto &slots = it->second;
-                    std::erase(slots, slot);
-                    if (slots.empty())
-                    {
-                        feature_to_frame_slots_.erase(it);
-                    }
+                    feature_to_frame_slots_[fid].push_back(slot);
                 }
             }
         }
@@ -218,7 +216,7 @@ namespace slam_primitives
       protected:
         // PROTECTED DATA MEMBERS
         CCircularBuffer<SFrameEntry, MAX_FRAMES> frames_;
-        std::unordered_map<SetID, std::vector<uint32_t>> feature_to_frame_slots_;
+        std::unordered_map<IDType, std::vector<uint32_t>> feature_to_frame_slots_;
     };
 
 } // namespace slam_primitives

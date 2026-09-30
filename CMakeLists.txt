@@ -457,6 +457,19 @@ if(BUILD_AS_MAIN_PROJECT)
   set(LIBNAME_WRAP_TARGET ${project_name})
   handle_gtwrappers() # You may also pass WRAP_INTERFACE_FILES variable to specify interface files, else autofetching is used
 
+  if(${GTWRAP_PYTHON_OPTION_NAME} AND ENABLE_TESTS AND BUILD_TESTING)
+    add_test(
+      NAME slam-primitives_python_binding_id_roundtrip
+      COMMAND ${CMAKE_COMMAND} -E env
+        "PYTHONPATH=${CMAKE_BINARY_DIR}/python:$ENV{PYTHONPATH}"
+        python3
+        "${CMAKE_SOURCE_DIR}/tests/test_wrapped/python_binding_id_roundtrip.py")
+    set_tests_properties(
+      slam-primitives_python_binding_id_roundtrip PROPERTIES
+      DEPENDS slam-primitives_python_import
+      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/python")
+  endif()
+
   # Determine if any wrapper is enabled
   if(${GTWRAP_PYTHON_OPTION_NAME} OR ${GTWRAP_MATLAB_OPTION_NAME})
     set(ANY_WRAPPER_ENABLED ON)

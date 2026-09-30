@@ -1,11 +1,34 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
-#include "slam-primitives/types/SFeatureLocation2D.h"
-#include "slam-primitives/types/concepts.h"
-#include "slam-primitives/types/labeling_policies.h"
-#include "slam-primitives/types/type_aliases.h"
+#include "slam-primitives/types/feature_types.h"
+#include "slam-primitives/feature_sets/labeling_policies.h"
+#include "slam-primitives/types/identifiers.h"
+#include "slam-primitives/bundle/CFeatureSetBundle.h"
 #include "slam-primitives/feature_sets/CFeatureSet.h"
 #include "slam-primitives/feature_sets/CFeatureTrack.h"
+
+#include <type_traits>
+#include <compare>
+#include <functional>
+
+struct SImplicitBundleID
+{
+    slam_primitives::SetID raw;
+    SImplicitBundleID(slam_primitives::SetID id) : raw(id) {}
+    auto value() const -> slam_primitives::SetID
+    {
+        return raw;
+    }
+    auto operator<=>(const SImplicitBundleID &) const = default;
+};
+
+template <> struct std::hash<SImplicitBundleID>
+{
+    auto operator()(SImplicitBundleID id) const noexcept -> std::size_t
+    {
+        return std::hash<slam_primitives::SetID>{}(id.value());
+    }
+};
 
 using namespace slam_primitives;
 
@@ -15,15 +38,23 @@ static_assert(LabelingPolicy<SLabelingDisabled>);
 static_assert(LabelingPolicy<SLabelingEnabled<64>>);
 
 // Negative compile-time checks
-struct SBadType { int x; };
+struct SBadType
+{
+    int x;
+};
 static_assert(!FeatureLocation<SBadType>);
 static_assert(!LabelingPolicy<SBadType>);
 static_assert(!LabelingPolicy<int>);
 
-// FeatureSetLike concept
-static_assert(FeatureSetLike<CFeatureSet<SFeatureLocation2D>>);
-static_assert(FeatureSetLike<CFeatureTrack<SFeatureLocation2D>>);
-static_assert(!FeatureSetLike<SBadType>);
+// Independent value types satisfy the same bundle storage contract.
+static_assert(BundleStorable<CFeatureSet<SFeatureLocation2D>>);
+static_assert(BundleStorable<CFeatureTrack<SFeatureLocation2D>>);
+static_assert(!BundleStorable<SBadType>);
+static_assert(BundleIdentifier<SetID>);
+static_assert(BundleIdentifier<CFeatureTrackID>);
+static_assert(!BundleIdentifier<SImplicitBundleID>);
+static_assert(std::is_same_v<CFeatureTrack<SFeatureLocation2D>::IDType, CFeatureTrackID>);
+static_assert(!std::is_constructible_v<CFeatureTrack<SFeatureLocation2D>, SetID>);
 
 // EBO: SLabelingDisabled is empty
 static_assert(sizeof(SLabelingDisabled) == 1);

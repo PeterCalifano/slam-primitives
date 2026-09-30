@@ -18,46 +18,43 @@
 
 namespace
 {
-class CEnvironmentVariableGuard final
-{
-  public:
-    explicit CEnvironmentVariableGuard(std::string charVariableName)
-        : charVariableName_(std::move(charVariableName))
+    class CEnvironmentVariableGuard final
     {
-        const char *charExistingValue_ =
-            std::getenv(charVariableName_.c_str());
-        if(charExistingValue_ != nullptr)
+      public:
+        explicit CEnvironmentVariableGuard(std::string charVariableName)
+            : charVariableName_(std::move(charVariableName))
         {
-            charPreviousValue_ = std::string(charExistingValue_);
+            const char *charExistingValue_ = std::getenv(charVariableName_.c_str());
+            if (charExistingValue_ != nullptr)
+            {
+                charPreviousValue_ = std::string(charExistingValue_);
+            }
         }
-    }
 
-    CEnvironmentVariableGuard(const CEnvironmentVariableGuard &) = delete;
-    CEnvironmentVariableGuard &
-    operator=(const CEnvironmentVariableGuard &) = delete;
+        CEnvironmentVariableGuard(const CEnvironmentVariableGuard &) = delete;
+        CEnvironmentVariableGuard &operator=(const CEnvironmentVariableGuard &) = delete;
 
-    ~CEnvironmentVariableGuard()
-    {
-        if(charPreviousValue_.has_value())
+        ~CEnvironmentVariableGuard()
         {
-            setenv(charVariableName_.c_str(),
-                   charPreviousValue_->c_str(), 1);
+            if (charPreviousValue_.has_value())
+            {
+                setenv(charVariableName_.c_str(), charPreviousValue_->c_str(), 1);
+            }
+            else
+            {
+                unsetenv(charVariableName_.c_str());
+            }
         }
-        else
+
+        void setValue(const std::string &charValue) const
         {
-            unsetenv(charVariableName_.c_str());
+            setenv(charVariableName_.c_str(), charValue.c_str(), 1);
         }
-    }
 
-    void setValue(const std::string &charValue) const
-    {
-        setenv(charVariableName_.c_str(), charValue.c_str(), 1);
-    }
-
-  private:
-    std::string charVariableName_;
-    std::optional<std::string> charPreviousValue_;
-};
+      private:
+        std::string charVariableName_;
+        std::optional<std::string> charPreviousValue_;
+    };
 } // namespace
 
 TEST_CASE("CLogger filters levels and routes complete lines", "[logging]")
@@ -66,8 +63,7 @@ TEST_CASE("CLogger filters levels and routes complete lines", "[logging]")
 
     std::ostringstream objOutputStream_;
     std::ostringstream objDiagnosticStream_;
-    CLogger objLogger_("component", ELogLevel::Info,
-                       ELogColorMode::Disabled, objOutputStream_,
+    CLogger objLogger_("component", ELogLevel::Info, ELogColorMode::Disabled, objOutputStream_,
                        objDiagnosticStream_);
 
     objLogger_.trace("hidden trace");
@@ -78,10 +74,9 @@ TEST_CASE("CLogger filters levels and routes complete lines", "[logging]")
     objLogger_.critical("unsafe");
 
     REQUIRE(objOutputStream_.str() == "[component][INFO] ready 3\n");
-    REQUIRE(objDiagnosticStream_.str() ==
-            "[component][WARNING] temperature 42.5\n"
-            "[component][ERROR] failed\n"
-            "[component][CRITICAL] unsafe\n");
+    REQUIRE(objDiagnosticStream_.str() == "[component][WARNING] temperature 42.5\n"
+                                          "[component][ERROR] failed\n"
+                                          "[component][CRITICAL] unsafe\n");
 }
 
 TEST_CASE("CLogger parses named and numeric levels", "[logging]")
@@ -103,8 +98,7 @@ TEST_CASE("CLogger rejects invalid severity values", "[logging]")
     using namespace slam_primitives::logging;
 
     CLogger objLogger_("component", ELogLevel::Trace);
-    REQUIRE_FALSE(
-        objLogger_.shouldLog(static_cast<ELogLevel>(255)));
+    REQUIRE_FALSE(objLogger_.shouldLog(static_cast<ELogLevel>(255)));
 
     objLogger_.setLevel(static_cast<ELogLevel>(255));
     REQUIRE_FALSE(objLogger_.shouldLog(ELogLevel::Error));
@@ -114,12 +108,10 @@ TEST_CASE("CLogger reads its tailored environment variable", "[logging]")
 {
     using namespace slam_primitives::logging;
 
-    CEnvironmentVariableGuard objEnvironmentGuard_(
-        "SLAM_PRIMITIVES_LOG_LEVEL");
+    CEnvironmentVariableGuard objEnvironmentGuard_("SLAM_PRIMITIVES_LOG_LEVEL");
     std::ostringstream objOutputStream_;
     std::ostringstream objDiagnosticStream_;
-    CLogger objLogger_("component", ELogLevel::Info,
-                       ELogColorMode::Disabled, objOutputStream_,
+    CLogger objLogger_("component", ELogLevel::Info, ELogColorMode::Disabled, objOutputStream_,
                        objDiagnosticStream_);
 
     objEnvironmentGuard_.setValue("trace");
@@ -137,17 +129,15 @@ TEST_CASE("CLogger color and default component are explicit", "[logging]")
 
     std::ostringstream objOutputStream_;
     std::ostringstream objDiagnosticStream_;
-    CLogger objLogger_("", ELogLevel::Info, ELogColorMode::Enabled,
-                       objOutputStream_, objDiagnosticStream_);
+    CLogger objLogger_("", ELogLevel::Info, ELogColorMode::Enabled, objOutputStream_,
+                       objDiagnosticStream_);
     objLogger_.info("ready");
 
-    REQUIRE(objOutputStream_.str() ==
-            "\033[34m[slam-primitives][INFO] ready\033[0m\n");
+    REQUIRE(objOutputStream_.str() == "\033[34m[slam-primitives][INFO] ready\033[0m\n");
     REQUIRE(objDiagnosticStream_.str().empty());
 }
 
-TEST_CASE("CLogger instances serialize concurrent writes as complete lines",
-          "[logging]")
+TEST_CASE("CLogger instances serialize concurrent writes as complete lines", "[logging]")
 {
     using namespace slam_primitives::logging;
 
@@ -157,21 +147,17 @@ TEST_CASE("CLogger instances serialize concurrent writes as complete lines",
     std::vector<std::thread> objThreads_;
 
     objThreads_.reserve(uiMessageCount_);
-    for(std::size_t uiMessageIndex_ = 0;
-        uiMessageIndex_ < uiMessageCount_; ++uiMessageIndex_)
+    for (std::size_t uiMessageIndex_ = 0; uiMessageIndex_ < uiMessageCount_; ++uiMessageIndex_)
     {
         objThreads_.emplace_back(
-            [&objOutputStream_, &objDiagnosticStream_,
-             uiMessageIndex_]()
+            [&objOutputStream_, &objDiagnosticStream_, uiMessageIndex_]()
             {
-                CLogger objLogger_(
-                    "worker", ELogLevel::Info,
-                    ELogColorMode::Disabled, objOutputStream_,
-                    objDiagnosticStream_);
+                CLogger objLogger_("worker", ELogLevel::Info, ELogColorMode::Disabled,
+                                   objOutputStream_, objDiagnosticStream_);
                 objLogger_.info("message-", uiMessageIndex_);
             });
     }
-    for(std::thread &objThread_ : objThreads_)
+    for (std::thread &objThread_ : objThreads_)
     {
         objThread_.join();
     }
@@ -179,20 +165,16 @@ TEST_CASE("CLogger instances serialize concurrent writes as complete lines",
     std::set<std::string> charActualLines_;
     std::size_t uiActualLineCount_ = 0;
     std::istringstream objCapturedOutput_(objOutputStream_.str());
-    for(std::string charLine_;
-        std::getline(objCapturedOutput_, charLine_);)
+    for (std::string charLine_; std::getline(objCapturedOutput_, charLine_);)
     {
         ++uiActualLineCount_;
         charActualLines_.insert(charLine_);
     }
 
     std::set<std::string> charExpectedLines_;
-    for(std::size_t uiMessageIndex_ = 0;
-        uiMessageIndex_ < uiMessageCount_; ++uiMessageIndex_)
+    for (std::size_t uiMessageIndex_ = 0; uiMessageIndex_ < uiMessageCount_; ++uiMessageIndex_)
     {
-        charExpectedLines_.insert(
-            "[worker][INFO] message-" +
-            std::to_string(uiMessageIndex_));
+        charExpectedLines_.insert("[worker][INFO] message-" + std::to_string(uiMessageIndex_));
     }
 
     REQUIRE(uiActualLineCount_ == uiMessageCount_);
@@ -201,6 +183,5 @@ TEST_CASE("CLogger instances serialize concurrent writes as complete lines",
 
 TEST_CASE("CLogger is link-safe across translation units", "[logging]")
 {
-    REQUIRE(LogFromOtherTranslationUnit() ==
-            "[other][INFO] translation-unit\n");
+    REQUIRE(LogFromOtherTranslationUnit() == "[other][INFO] translation-unit\n");
 }

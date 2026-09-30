@@ -18,6 +18,8 @@ message(STATUS "Library src files found in ${CURRENT_FOLDER_NAME}: ${srcLibFiles
 # User specified subdirectories
 # Add subdirectories for each module in slam_primitives
 add_subdirectory(types)
+add_subdirectory(camera)
+add_subdirectory(detail)
 add_subdirectory(containers)
 add_subdirectory(feature_sets)
 add_subdirectory(bundle)

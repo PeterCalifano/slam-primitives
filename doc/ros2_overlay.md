@@ -21,6 +21,11 @@ Build the overlay only when ROS integration is required:
 | `slam_primitives` | Plain-CMake colcon shim around the core library. |
 | `slam_primitives_interfaces` | Feature observation and track messages. |
 
+`FeatureTrack2D.track_id` is `uint64` and identifies a track.
+`FeatureObservation2D.frame_id` is `uint32` and identifies a frame. Message
+consumers must use these widths when bridging to the native strong IDs;
+`SetID` remains a separate generic feature-set domain.
+
 The shim adds the repository root as a CMake subdirectory with tests, examples,
 programs, wrappers, and OpenGL disabled. The core remains an `INTERFACE`
 library; colcon installs its headers and namespaced CMake package target into

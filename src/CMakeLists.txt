@@ -2,6 +2,7 @@ set(lib_name ${LIB_TARGET_NAME})
 
 # Add config.h file to build
 configure_file(config.h.in config.h)
+configure_file(config.h.in "${_project_generated_include_root}/${project_name}/config.h")
 
 # Add src files to library
 set(SRC_PATTERN "*.cpp; *.cu")

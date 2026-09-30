@@ -1,3 +1,3 @@
-uint32 track_id
+uint64 track_id
 slam_primitives_interfaces/FeatureObservation2D[] observations
 bool is_terminated

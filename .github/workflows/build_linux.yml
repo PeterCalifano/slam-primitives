@@ -187,7 +187,7 @@ jobs:
           CMAKE
 
           cat > "${nested_dir}/main.cpp" <<'CPP'
-          #include <slam_primitives/logging/CLogger.h>
+          #include <slam-primitives/logging/CLogger.h>
 
           int main()
           {

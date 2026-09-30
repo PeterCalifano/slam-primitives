@@ -1,46 +1,93 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
-#include "slam_primitives/feature_sets/CFeatureTrack.h"
-#include "slam_primitives/types/SFeatureLocation2D.h"
-#include "slam_primitives/types/labeling_policies.h"
-#include "slam_primitives/types/type_aliases.h"
+#include "slam-primitives/feature_sets/CFeatureSet.h"
+#include "slam-primitives/feature_sets/CFeatureTrack.h"
+#include "slam-primitives/types/feature_types.h"
+#include "slam-primitives/feature_sets/labeling_policies.h"
+#include "slam-primitives/types/identifiers.h"
+#include <type_traits>
+#include <utility>
+#include <limits>
 
 using namespace slam_primitives;
 using Track = CFeatureTrack<SFeatureLocation2D, 4>;
+static_assert(std::is_same_v<decltype(std::declval<const Track &>().getFrameIDs()),
+                             std::span<const CFrameID>>);
+static_assert(!std::is_base_of_v<CFeatureSet<SFeatureLocation2D, 4>, Track>);
+template <typename T>
+concept HasUnpairedAppend = requires(T &track) { track.addKeypoint(SFeatureLocation2D{}); };
+static_assert(!HasUnpairedAppend<Track>);
+
+TEST_CASE("CFeatureTrack keeps keypoints paired with increasing frame IDs", "[feature_sets]")
+{
+    Track track{CFeatureTrackID{7U}};
+    REQUIRE_FALSE(track.addKeypointToTrack({1.0, 2.0}, CFrameID{4U}));
+    REQUIRE_THROWS_AS(track.addKeypointToTrack({9.0, 9.0}, CFrameID{4U}), std::invalid_argument);
+    REQUIRE_THROWS_AS(track.addKeypointToTrack({8.0, 8.0}, CFrameID{3U}), std::invalid_argument);
+    REQUIRE(track.size() == 1U);
+    REQUIRE(track.getFrameIDs().size() == 1U);
+    REQUIRE(track.getKeypoint(0U).u == Catch::Approx(1.0));
+    REQUIRE_FALSE(track.addKeypointToTrack({3.0, 4.0}, CFrameID{5U}));
+    REQUIRE(track.getKeypoints().size() == track.getFrameIDs().size());
+}
+
+TEST_CASE("Identified feature tracks reject replacement with a different ID", "[feature_sets]")
+{
+    Track track{CFeatureTrackID{7U}};
+    track.addKeypointToTrack({1.0, 2.0}, CFrameID{4U});
+    Track replacement{CFeatureTrackID{8U}};
+    replacement.addKeypointToTrack({8.0, 9.0}, CFrameID{5U});
+    REQUIRE_THROWS_AS((track = replacement), std::logic_error);
+    REQUIRE_THROWS_AS((track = Track{}), std::logic_error);
+    REQUIRE(track.getID() == CFeatureTrackID{7U});
+    REQUIRE(track.getFrameIDs().size() == 1U);
+    REQUIRE(track.getKeypoint(0U).u == Catch::Approx(1.0));
+}
+
+TEST_CASE("CFeatureTrack accepts the complete unsigned frame range", "[feature_sets]")
+{
+    Track track{CFeatureTrackID{1U}};
+    const CFrameID last_frame{std::numeric_limits<std::uint32_t>::max()};
+    REQUIRE_FALSE(track.addKeypointToTrack({1.0, 2.0}, CFrameID{}));
+    REQUIRE_FALSE(track.addKeypointToTrack({3.0, 4.0}, last_frame));
+    REQUIRE(track.getFrameIDs()[0] == CFrameID{});
+    REQUIRE(track.getFrameIDs()[1] == last_frame);
+    REQUIRE(track.getKeypointAtFrame(last_frame).has_value());
+}
 
 TEST_CASE("CFeatureTrack create and add keypoints", "[feature_sets]")
 {
-    Track t(10);
-    REQUIRE(t.getID() == 10);
+    Track t(CFeatureTrackID{10U});
+    REQUIRE(t.getID() == CFeatureTrackID{10U});
     REQUIRE(t.getTrackLength() == 0);
     REQUIRE(t.getFrameIDs().empty());
     REQUIRE_FALSE(t.isTerminated());
 
-    REQUIRE_FALSE(t.addKeypointToTrack({1.0, 2.0}, 100));
+    REQUIRE_FALSE(t.addKeypointToTrack({1.0, 2.0}, CFrameID{100U}));
     REQUIRE(t.getTrackLength() == 1);
     REQUIRE(t.getFrameIDs().size() == 1);
-    REQUIRE_FALSE(t.addKeypointToTrack({3.0, 4.0}, 101));
+    REQUIRE_FALSE(t.addKeypointToTrack({3.0, 4.0}, CFrameID{101U}));
     REQUIRE(t.getTrackLength() == 2);
 }
 
 TEST_CASE("CFeatureTrack termination at MAX_LENGTH", "[feature_sets]")
 {
-    Track t(1);
-    REQUIRE_FALSE(t.addKeypointToTrack({0, 0}, 0));
-    REQUIRE_FALSE(t.addKeypointToTrack({0, 0}, 1));
-    REQUIRE_FALSE(t.addKeypointToTrack({0, 0}, 2));
-    REQUIRE(t.addKeypointToTrack({0, 0}, 3)); // 4th = MAX_LENGTH
+    Track t(CFeatureTrackID{1U});
+    REQUIRE_FALSE(t.addKeypointToTrack({0, 0}, CFrameID{0U}));
+    REQUIRE_FALSE(t.addKeypointToTrack({0, 0}, CFrameID{1U}));
+    REQUIRE_FALSE(t.addKeypointToTrack({0, 0}, CFrameID{2U}));
+    REQUIRE(t.addKeypointToTrack({0, 0}, CFrameID{3U})); // 4th = MAX_LENGTH
     REQUIRE(t.isTerminated());
     REQUIRE(t.getTrackLength() == 4);
-    REQUIRE(t.addKeypointToTrack({9, 9}, 4));
+    REQUIRE(t.addKeypointToTrack({9, 9}, CFrameID{4U}));
     REQUIRE(t.getTrackLength() == 4);
-    REQUIRE_FALSE(t.getKeypointAtFrame(4).has_value());
+    REQUIRE_FALSE(t.getKeypointAtFrame(CFrameID{4U}).has_value());
 }
 
 TEST_CASE("CFeatureTrack manual terminate", "[feature_sets]")
 {
-    Track t(1);
-    t.addKeypointToTrack({1, 1}, 0);
+    Track t(CFeatureTrackID{1U});
+    t.addKeypointToTrack({1, 1}, CFrameID{0U});
     REQUIRE_FALSE(t.isTerminated());
     t.terminate();
     REQUIRE(t.isTerminated());
@@ -48,33 +95,33 @@ TEST_CASE("CFeatureTrack manual terminate", "[feature_sets]")
 
 TEST_CASE("CFeatureTrack add after terminated is no-op", "[feature_sets]")
 {
-    Track t(1);
+    Track t(CFeatureTrackID{1U});
     t.terminate();
-    REQUIRE(t.addKeypointToTrack({1, 1}, 0));
+    REQUIRE(t.addKeypointToTrack({1, 1}, CFrameID{0U}));
     REQUIRE(t.getTrackLength() == 0);
 }
 
 TEST_CASE("CFeatureTrack getFrameIDs", "[feature_sets]")
 {
-    Track t(1);
-    t.addKeypointToTrack({0, 0}, 10);
-    t.addKeypointToTrack({0, 0}, 20);
-    t.addKeypointToTrack({0, 0}, 30);
+    Track t(CFeatureTrackID{1U});
+    t.addKeypointToTrack({0, 0}, CFrameID{10U});
+    t.addKeypointToTrack({0, 0}, CFrameID{20U});
+    t.addKeypointToTrack({0, 0}, CFrameID{30U});
 
     auto ids = t.getFrameIDs();
     REQUIRE(ids.size() == 3);
-    REQUIRE(ids[0] == 10);
-    REQUIRE(ids[1] == 20);
-    REQUIRE(ids[2] == 30);
+    REQUIRE(ids[0] == CFrameID{10U});
+    REQUIRE(ids[1] == CFrameID{20U});
+    REQUIRE(ids[2] == CFrameID{30U});
 }
 
 TEST_CASE("CFeatureTrack getKeypointAtFrame existing", "[feature_sets]")
 {
-    Track t(1);
-    t.addKeypointToTrack({5.0, 6.0}, 42);
-    t.addKeypointToTrack({7.0, 8.0}, 43);
+    Track t(CFeatureTrackID{1U});
+    t.addKeypointToTrack({5.0, 6.0}, CFrameID{42U});
+    t.addKeypointToTrack({7.0, 8.0}, CFrameID{43U});
 
-    auto kp = t.getKeypointAtFrame(42);
+    auto kp = t.getKeypointAtFrame(CFrameID{42U});
     REQUIRE(kp.has_value());
     REQUIRE(kp->u == Catch::Approx(5.0));
     REQUIRE(kp->v == Catch::Approx(6.0));
@@ -82,10 +129,10 @@ TEST_CASE("CFeatureTrack getKeypointAtFrame existing", "[feature_sets]")
 
 TEST_CASE("CFeatureTrack getKeypointAtFrame missing", "[feature_sets]")
 {
-    Track t(1);
-    t.addKeypointToTrack({5.0, 6.0}, 42);
+    Track t(CFeatureTrackID{1U});
+    t.addKeypointToTrack({5.0, 6.0}, CFrameID{42U});
 
-    auto kp = t.getKeypointAtFrame(99);
+    auto kp = t.getKeypointAtFrame(CFrameID{99U});
     REQUIRE_FALSE(kp.has_value());
 }
 
@@ -93,17 +140,17 @@ TEST_CASE("CFeatureTrack labeling disabled no overhead", "[feature_sets]")
 {
     using TrackDisabled = CFeatureTrack<SFeatureLocation2D, 4, SLabelingDisabled>;
     // Just verify it compiles and labeling data is accessible
-    TrackDisabled t(1);
+    TrackDisabled t(CFeatureTrackID{1U});
     REQUIRE(TrackDisabled::capacity() > 0);
-    auto& label = t.getLabelingData();
+    auto &label = t.getLabelingData();
     REQUIRE_FALSE(label.has_labeling);
 }
 
 TEST_CASE("CFeatureTrack labeling enabled stores data", "[feature_sets]")
 {
     using TrackEnabled = CFeatureTrack<SFeatureLocation2D, 4, SLabelingEnabled<4>>;
-    TrackEnabled t(1);
-    auto& label = t.getLabelingData();
+    TrackEnabled t(CFeatureTrackID{1U});
+    auto &label = t.getLabelingData();
     REQUIRE(label.has_labeling);
 
     label.labeled_keypoints[0] = {10.0, 20.0};
@@ -112,7 +159,7 @@ TEST_CASE("CFeatureTrack labeling enabled stores data", "[feature_sets]")
 
 TEST_CASE("CFeatureTrack lidar augmentation", "[feature_sets]")
 {
-    Track t(1);
+    Track t(CFeatureTrackID{1U});
     REQUIRE_FALSE(t.getLidar().has_value());
 
     SLidarEnhancedData lidar{100.0, 0.5, 0.3};

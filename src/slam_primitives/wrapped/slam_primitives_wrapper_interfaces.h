@@ -24,17 +24,25 @@
  * vector ergonomics.
  */
 
-#include "slam_primitives/bundle/CFeatureSetBundle.h"
-#include "slam_primitives/covisibility/CCovisibilityGraph.h"
-#include "slam_primitives/feature_sets/CFeatureTrack.h"
-#include "slam_primitives/types/SFeatureLocation2D.h"
-#include "slam_primitives/types/type_aliases.h"
+#include "slam-primitives/bundle/CFeatureSetBundle.h"
+#include "slam-primitives/covisibility/CCovisibilityGraph.h"
+#include "slam-primitives/feature_sets/CFeatureTrack.h"
+#include "slam-primitives/types/feature_types.h"
+#include "slam-primitives/types/identifiers.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <span>
 #include <stdexcept>
 #include <utility>
 #include <vector>
+
+// gtwrap includes this header after pybind11 in generated Python translation
+// units. Enable vector value conversion there without imposing a pybind11
+// dependency on native or MATLAB consumers of this header.
+#ifdef PYBIND11_VERSION_MAJOR
+#include <pybind11/stl.h>
+#endif
 
 namespace slam_primitives
 {
@@ -52,12 +60,12 @@ namespace slam_primitives
         /// @brief Native track type wrapped by this facade.
         using TrackT = CFeatureTrack<SFeatureLocation2D, 128>;
 
-        /// @brief Construct an empty track facade with the native default SetID.
+        /// @brief Construct an empty track facade without an assigned ID.
         CFeatureTrack2D() = default;
 
-        /// @brief Construct an empty track facade with an explicit SetID.
+        /// @brief Construct an empty track facade with an explicit track ID.
         /// @param id Feature-track identifier stored in the native track.
-        explicit CFeatureTrack2D(SetID id) : track_(id) {}
+        explicit CFeatureTrack2D(std::uint64_t id) : track_(CFeatureTrackID{id}) {}
 
         /// @brief Wrap an existing native track.
         /// @param track Native track moved into the facade.
@@ -67,25 +75,41 @@ namespace slam_primitives
         /// @param keypoint Image-plane keypoint location.
         /// @param frame Frame identifier associated with @p keypoint.
         /// @return true if the native track is terminated after the call.
-        auto addKeypointToTrack(SFeatureLocation2D keypoint, FrameID frame) -> bool
+        auto addKeypointToTrack(SFeatureLocation2D keypoint, std::uint32_t frame) -> bool
         {
-            return track_.addKeypointToTrack(keypoint, frame);
+            return track_.addKeypointToTrack(keypoint, CFrameID{frame});
         }
 
         /// @brief Manually terminate the wrapped track.
-        void terminate() { track_.terminate(); }
+        void terminate()
+        {
+            track_.terminate();
+        }
 
         /// @brief Check whether the wrapped track is terminated.
-        auto isTerminated() const -> bool { return track_.isTerminated(); }
+        auto isTerminated() const -> bool
+        {
+            return track_.isTerminated();
+        }
 
         /// @brief Return the number of observations stored in the track.
-        auto getTrackLength() const -> uint32_t { return track_.getTrackLength(); }
+        auto getTrackLength() const -> uint32_t
+        {
+            return track_.getTrackLength();
+        }
 
-        /// @brief Return the SetID stored in the native track.
-        auto getID() const -> SetID { return track_.getID(); }
+        /// @brief Return the native track ID as a binding-friendly integer.
+        /// @throws std::logic_error If the track is unassigned.
+        auto getID() const -> std::uint64_t
+        {
+            return track_.getID().value();
+        }
 
         /// @brief Return the number of stored keypoints.
-        auto size() const -> uint32_t { return track_.size(); }
+        auto size() const -> uint32_t
+        {
+            return track_.size();
+        }
 
         /// @brief Return the keypoint at a zero-based observation index.
         /// @throws std::out_of_range when @p index is outside the stored range.
@@ -98,23 +122,29 @@ namespace slam_primitives
         ///
         /// The native API returns a span. The facade returns an owning vector so
         /// generated bindings do not expose view lifetimes.
-        auto getFrameIDs() const -> std::vector<FrameID>
+        auto getFrameIDs() const -> std::vector<std::uint32_t>
         {
             const auto frame_ids_ = track_.getFrameIDs();
-            return {frame_ids_.begin(), frame_ids_.end()};
+            std::vector<std::uint32_t> values;
+            values.reserve(frame_ids_.size());
+            for (const auto frame_id : frame_ids_)
+            {
+                values.push_back(frame_id.value());
+            }
+            return values;
         }
 
         /// @brief Check whether an observation exists at a frame.
-        auto hasKeypointAtFrame(FrameID frame) const -> bool
+        auto hasKeypointAtFrame(std::uint32_t frame) const -> bool
         {
-            return track_.getKeypointAtFrame(frame).has_value();
+            return track_.getKeypointAtFrame(CFrameID{frame}).has_value();
         }
 
         /// @brief Return the keypoint observed at a frame.
         /// @throws std::out_of_range when @p frame is absent.
-        auto getKeypointAtFrame(FrameID frame) const -> SFeatureLocation2D
+        auto getKeypointAtFrame(std::uint32_t frame) const -> SFeatureLocation2D
         {
-            auto keypoint_ = track_.getKeypointAtFrame(frame);
+            auto keypoint_ = track_.getKeypointAtFrame(CFrameID{frame});
             if (!keypoint_.has_value())
             {
                 throw std::out_of_range("CFeatureTrack2D::getKeypointAtFrame: frame not found");
@@ -123,10 +153,16 @@ namespace slam_primitives
         }
 
         /// @brief Attach LiDAR augmentation metadata to the track.
-        void setLidar(SLidarEnhancedData lidar) { track_.setLidar(lidar); }
+        void setLidar(SLidarEnhancedData lidar)
+        {
+            track_.setLidar(lidar);
+        }
 
         /// @brief Check whether LiDAR augmentation metadata is available.
-        auto hasLidar() const -> bool { return track_.getLidar().has_value(); }
+        auto hasLidar() const -> bool
+        {
+            return track_.getLidar().has_value();
+        }
 
         /// @brief Return LiDAR augmentation metadata.
         /// @throws std::out_of_range when LiDAR metadata has not been set.
@@ -147,8 +183,14 @@ namespace slam_primitives
          * present for C++ integration tests and adapter code that must cross the
          * facade/native boundary without copying.
          */
-        auto native() -> TrackT & { return track_; }
-        auto native() const -> const TrackT & { return track_; }
+        auto native() -> TrackT &
+        {
+            return track_;
+        }
+        auto native() const -> const TrackT &
+        {
+            return track_;
+        }
 
       private:
         TrackT track_{};
@@ -174,101 +216,155 @@ namespace slam_primitives
         CFeatureTrackBundle2D() = default;
 
         /// @brief Allocate an empty native track in the bundle.
-        /// @return Newly assigned SetID.
-        auto allocateTrack() -> SetID
+        /// @return Newly assigned track ID.
+        auto allocateTrack() -> std::uint64_t
         {
             TrackT track_;
-            return bundle_.allocate(std::move(track_));
+            return bundle_.allocate(std::move(track_)).value();
+        }
+
+        /// @brief Store a track with a caller-supplied ID.
+        /// @param id Track ID to preserve in the bundle.
+        /// @return The supplied track ID.
+        auto allocateTrackWithID(std::uint64_t id) -> std::uint64_t
+        {
+            return bundle_.allocate(TrackT{CFeatureTrackID{id}}).value();
         }
 
         /// @brief Allocate a track initialized with one observation.
         /// @param keypoint First keypoint observation.
         /// @param frame Frame identifier for @p keypoint.
-        /// @return Newly assigned SetID.
-        auto allocateTrackWithInitialObservation(SFeatureLocation2D keypoint, FrameID frame) -> SetID
+        /// @return Newly assigned track ID.
+        auto allocateTrackWithInitialObservation(SFeatureLocation2D keypoint,
+                                                 std::uint32_t frame) -> std::uint64_t
         {
             TrackT track_;
-            track_.addKeypointToTrack(keypoint, frame);
-            return bundle_.allocate(std::move(track_));
+            track_.addKeypointToTrack(keypoint, CFrameID{frame});
+            return bundle_.allocate(std::move(track_)).value();
         }
 
-        /// @brief Check whether a SetID is currently active in the bundle.
-        auto contains(SetID id) const -> bool { return bundle_.contains(id); }
+        /// @brief Store a caller-identified track with its first observation.
+        /// @param id Track ID to preserve in the bundle.
+        /// @param keypoint First keypoint observation.
+        /// @param frame Frame identifier for @p keypoint.
+        /// @return The supplied track ID.
+        auto allocateTrackWithInitialObservationAndID(std::uint64_t id, SFeatureLocation2D keypoint,
+                                                      std::uint32_t frame) -> std::uint64_t
+        {
+            TrackT track_{CFeatureTrackID{id}};
+            track_.addKeypointToTrack(keypoint, CFrameID{frame});
+            return bundle_.allocate(std::move(track_)).value();
+        }
 
-        /// @brief Release the track associated with a SetID.
+        /// @brief Check whether a track ID is currently active in the bundle.
+        auto contains(std::uint64_t id) const -> bool
+        {
+            return bundle_.contains(CFeatureTrackID{id});
+        }
+
+        /// @brief Release the track associated with a track ID.
         /// @throws std::out_of_range when @p id is unknown.
-        void releaseTrack(SetID id) { bundle_.free(id); }
+        void releaseTrack(std::uint64_t id)
+        {
+            bundle_.free(CFeatureTrackID{id});
+        }
 
         /// @brief Return the number of active tracks in the bundle.
-        auto activeCount() const -> uint32_t { return bundle_.activeCount(); }
+        auto activeCount() const -> uint32_t
+        {
+            return bundle_.activeCount();
+        }
 
         /// @brief Append an observation to an active track.
         /// @return true if the target track is terminated after the call.
         /// @throws std::out_of_range when @p id is unknown.
-        auto addObservation(SetID id, SFeatureLocation2D keypoint, FrameID frame) -> bool
+        auto addObservation(std::uint64_t id, SFeatureLocation2D keypoint,
+                            std::uint32_t frame) -> bool
         {
-            return bundle_.get(id).addKeypointToTrack(keypoint, frame);
+            return bundle_.get(CFeatureTrackID{id}).addKeypointToTrack(keypoint, CFrameID{frame});
         }
 
         /// @brief Manually terminate a track.
         /// @throws std::out_of_range when @p id is unknown.
-        void terminateTrack(SetID id) { bundle_.get(id).terminate(); }
+        void terminateTrack(std::uint64_t id)
+        {
+            bundle_.get(CFeatureTrackID{id}).terminate();
+        }
 
         /// @brief Check whether a track is terminated.
         /// @throws std::out_of_range when @p id is unknown.
-        auto isTerminated(SetID id) const -> bool { return bundle_.get(id).isTerminated(); }
+        auto isTerminated(std::uint64_t id) const -> bool
+        {
+            return bundle_.get(CFeatureTrackID{id}).isTerminated();
+        }
 
         /// @brief Return the observation count for a track.
         /// @throws std::out_of_range when @p id is unknown.
-        auto getTrackLength(SetID id) const -> uint32_t { return bundle_.get(id).getTrackLength(); }
+        auto getTrackLength(std::uint64_t id) const -> uint32_t
+        {
+            return bundle_.get(CFeatureTrackID{id}).getTrackLength();
+        }
 
         /// @brief Return a copy of a track as a facade object.
         /// @throws std::out_of_range when @p id is unknown.
-        auto getTrackCopy(SetID id) const -> CFeatureTrack2D
+        auto getTrackCopy(std::uint64_t id) const -> CFeatureTrack2D
         {
-            return CFeatureTrack2D(bundle_.get(id));
+            return CFeatureTrack2D(bundle_.get(CFeatureTrackID{id}));
         }
 
         /// @brief Return frame IDs for a track in observation order.
         /// @throws std::out_of_range when @p id is unknown.
-        auto getFrameIDs(SetID id) const -> std::vector<FrameID>
+        auto getFrameIDs(std::uint64_t id) const -> std::vector<std::uint32_t>
         {
-            const auto frame_ids_ = bundle_.get(id).getFrameIDs();
-            return {frame_ids_.begin(), frame_ids_.end()};
+            const auto frame_ids_ = bundle_.get(CFeatureTrackID{id}).getFrameIDs();
+            std::vector<std::uint32_t> values;
+            values.reserve(frame_ids_.size());
+            for (const auto frame_id : frame_ids_)
+            {
+                values.push_back(frame_id.value());
+            }
+            return values;
         }
 
         /// @brief Check whether a track has an observation at a frame.
         /// @throws std::out_of_range when @p id is unknown.
-        auto hasKeypointAtFrame(SetID id, FrameID frame) const -> bool
+        auto hasKeypointAtFrame(std::uint64_t id, std::uint32_t frame) const -> bool
         {
-            return bundle_.get(id).getKeypointAtFrame(frame).has_value();
+            return bundle_.get(CFeatureTrackID{id}).getKeypointAtFrame(CFrameID{frame}).has_value();
         }
 
         /// @brief Return the keypoint for a track/frame pair.
         /// @throws std::out_of_range when @p id or @p frame is absent.
-        auto getKeypointAtFrame(SetID id, FrameID frame) const -> SFeatureLocation2D
+        auto getKeypointAtFrame(std::uint64_t id, std::uint32_t frame) const -> SFeatureLocation2D
         {
-            auto keypoint_ = bundle_.get(id).getKeypointAtFrame(frame);
+            auto keypoint_ = bundle_.get(CFeatureTrackID{id}).getKeypointAtFrame(CFrameID{frame});
             if (!keypoint_.has_value())
             {
-                throw std::out_of_range("CFeatureTrackBundle2D::getKeypointAtFrame: frame not found");
+                throw std::out_of_range(
+                    "CFeatureTrackBundle2D::getKeypointAtFrame: frame not found");
             }
             return *keypoint_;
         }
 
         /// @brief Attach LiDAR augmentation metadata to a track.
         /// @throws std::out_of_range when @p id is unknown.
-        void setLidar(SetID id, SLidarEnhancedData lidar) { bundle_.get(id).setLidar(lidar); }
+        void setLidar(std::uint64_t id, SLidarEnhancedData lidar)
+        {
+            bundle_.get(CFeatureTrackID{id}).setLidar(lidar);
+        }
 
         /// @brief Check whether a track has LiDAR augmentation metadata.
         /// @throws std::out_of_range when @p id is unknown.
-        auto hasLidar(SetID id) const -> bool { return bundle_.get(id).getLidar().has_value(); }
+        auto hasLidar(std::uint64_t id) const -> bool
+        {
+            return bundle_.get(CFeatureTrackID{id}).getLidar().has_value();
+        }
 
         /// @brief Return LiDAR augmentation metadata for a track.
         /// @throws std::out_of_range when @p id is unknown or metadata is absent.
-        auto getLidar(SetID id) const -> SLidarEnhancedData
+        auto getLidar(std::uint64_t id) const -> SLidarEnhancedData
         {
-            const auto &lidar_ = bundle_.get(id).getLidar();
+            const auto &lidar_ = bundle_.get(CFeatureTrackID{id}).getLidar();
             if (!lidar_.has_value())
             {
                 throw std::out_of_range("CFeatureTrackBundle2D::getLidar: LiDAR data not set");
@@ -277,29 +373,37 @@ namespace slam_primitives
         }
 
         /// @brief Return IDs of active tracks currently marked terminated.
-        auto getTerminatedIDs() const -> std::vector<SetID>
+        auto getTerminatedIDs() const -> std::vector<std::uint64_t>
         {
-            auto ids_ = bundle_.getTerminatedIDs();
+            std::vector<std::uint64_t> ids_;
+            for (const CFeatureTrackID id : bundle_.getTerminatedIDs())
+            {
+                ids_.push_back(id.value());
+            }
             std::sort(ids_.begin(), ids_.end());
             return ids_;
         }
 
         /// @brief Return IDs of all active tracks.
-        auto getActiveIDs() -> std::vector<SetID>
+        auto getActiveIDs() -> std::vector<std::uint64_t>
         {
-            std::vector<SetID> ids_;
-            bundle_.forEachActive([&ids_](SetID id, TrackT &)
-                                  { ids_.push_back(id); });
+            std::vector<std::uint64_t> ids_;
+            bundle_.forEachActive([&ids_](CFeatureTrackID id, TrackT &)
+                                  { ids_.push_back(id.value()); });
             std::sort(ids_.begin(), ids_.end());
             return ids_;
         }
 
-        /// @brief Release all tracks whose SetID is not listed in @p active_ids.
-        void clearInactive(const std::vector<SetID> &active_ids)
+        /// @brief Release all tracks whose ID is not listed in @p active_ids.
+        void clearInactive(const std::vector<std::uint64_t> &active_ids)
         {
-            // The native API consumes a span; the facade owns no storage beyond
-            // this call and therefore creates the span directly from the vector.
-            bundle_.clearInactive(std::span<const SetID>(active_ids.data(), active_ids.size()));
+            std::vector<CFeatureTrackID> typed_ids;
+            typed_ids.reserve(active_ids.size());
+            for (const auto id : active_ids)
+            {
+                typed_ids.emplace_back(id);
+            }
+            bundle_.clearInactive(typed_ids);
         }
 
       private:
@@ -316,57 +420,98 @@ namespace slam_primitives
     {
       public:
         /// @brief Native graph type wrapped by this facade.
-        using GraphT = CCovisibilityGraph<64>;
+        using GraphT = CCovisibilityGraph<64, CFeatureTrackID>;
 
-        /// @brief Construct an empty covisibility graph facade.
+        /// @brief Construct an empty graph facade with the native 64-frame limit.
         CCovisibilityGraphWrapper() = default;
 
+        /// @brief Construct an empty graph facade retaining 1 through 64 frames.
+        /// @throws std::invalid_argument For a limit outside the native capacity.
+        explicit CCovisibilityGraphWrapper(std::uint32_t window_size) : graph_(window_size) {}
+
+        /// @brief Change retention, dropping oldest excess frames immediately.
+        /// Increasing the limit does not restore evicted history. Invalid limits
+        /// throw std::invalid_argument without changing graph state.
+        void setWindowSize(std::uint32_t window_size)
+        {
+            graph_.setWindowSize(window_size);
+        }
+
+        /// @brief Return the configured retention limit rather than the current frame count.
+        [[nodiscard]] auto getWindowSize() const noexcept -> std::uint32_t
+        {
+            return graph_.getWindowSize();
+        }
+
         /// @brief Add a frame to the sliding covisibility window.
-        void pushFrame(FrameID id) { graph_.pushFrame(id); }
+        void pushFrame(std::uint32_t id)
+        {
+            graph_.pushFrame(CFrameID{id});
+        }
 
         /// @brief Mark a set of features visible in a frame.
         ///
         /// Unknown frames are ignored by the native graph.
-        void addVisibilityLinks(FrameID frame, const std::vector<SetID> &features)
+        void addVisibilityLinks(std::uint32_t frame, const std::vector<std::uint64_t> &features)
         {
-            // Keep the binding ABI vector-based while forwarding a zero-copy
-            // span to the native graph implementation.
-            graph_.addVisibilityLinks(frame, std::span<const SetID>(features.data(), features.size()));
+            std::vector<CFeatureTrackID> typed_features;
+            typed_features.reserve(features.size());
+            for (const auto id : features)
+            {
+                typed_features.emplace_back(id);
+            }
+            graph_.addVisibilityLinks(CFrameID{frame}, typed_features);
         }
 
         /// @brief Return features visible in a frame.
-        auto getVisibleFeatures(FrameID frame) const -> std::vector<SetID>
+        auto getVisibleFeatures(std::uint32_t frame) const -> std::vector<std::uint64_t>
         {
-            return toVector(graph_.getVisibleFeatures(frame));
+            return toVector(graph_.getVisibleFeatures(CFrameID{frame}));
         }
 
         /// @brief Return features visible in the most recently pushed frame.
-        auto getLastFrameVisibility() const -> std::vector<SetID>
+        auto getLastFrameVisibility() const -> std::vector<std::uint64_t>
         {
             return toVector(graph_.getLastFrameVisibility());
         }
 
         /// @brief Return sorted features visible in both input frames.
-        auto getCovisibleFeatures(FrameID first_frame, FrameID second_frame) const -> std::vector<SetID>
+        auto getCovisibleFeatures(std::uint32_t first_frame,
+                                  std::uint32_t second_frame) const -> std::vector<std::uint64_t>
         {
-            return graph_.getCovisibleFeatures(first_frame, second_frame);
+            const auto typed_ids =
+                graph_.getCovisibleFeatures(CFrameID{first_frame}, CFrameID{second_frame});
+            return toVector(typed_ids);
         }
 
         /// @brief Remove all feature visibility entries not listed as active.
-        void clearInactiveFeatures(const std::vector<SetID> &active_feature_ids)
+        void clearInactiveFeatures(const std::vector<std::uint64_t> &active_feature_ids)
         {
-            // See addVisibilityLinks: the facade boundary owns binding-friendly
-            // containers; the native graph keeps the span-based contract.
-            graph_.clearInactiveFeatures(std::span<const SetID>(active_feature_ids.data(), active_feature_ids.size()));
+            std::vector<CFeatureTrackID> typed_ids;
+            typed_ids.reserve(active_feature_ids.size());
+            for (const auto id : active_feature_ids)
+            {
+                typed_ids.emplace_back(id);
+            }
+            graph_.clearInactiveFeatures(typed_ids);
         }
 
         /// @brief Return the number of frames retained in the graph.
-        auto frameCount() const -> uint32_t { return graph_.frameCount(); }
+        auto frameCount() const -> uint32_t
+        {
+            return graph_.frameCount();
+        }
 
       private:
-        static auto toVector(std::span<const SetID> values) -> std::vector<SetID>
+        static auto toVector(std::span<const CFeatureTrackID> values) -> std::vector<std::uint64_t>
         {
-            return {values.begin(), values.end()};
+            std::vector<std::uint64_t> ids;
+            ids.reserve(values.size());
+            for (const auto id : values)
+            {
+                ids.push_back(id.value());
+            }
+            return ids;
         }
 
         GraphT graph_{};

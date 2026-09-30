@@ -16,6 +16,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 # Add subdirectory
 add_subdirectory(test_types)
+add_subdirectory(test_camera)
 add_subdirectory(test_containers)
 add_subdirectory(test_feature_sets)
 add_subdirectory(test_bundle)

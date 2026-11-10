@@ -462,7 +462,7 @@ if(BUILD_AS_MAIN_PROJECT)
       NAME slam-primitives_python_binding_id_roundtrip
       COMMAND ${CMAKE_COMMAND} -E env
         "PYTHONPATH=${CMAKE_BINARY_DIR}/python:$ENV{PYTHONPATH}"
-        python3
+        "${PYTHON_EXECUTABLE}"
         "${CMAKE_SOURCE_DIR}/tests/test_wrapped/python_binding_id_roundtrip.py")
     set_tests_properties(
       slam-primitives_python_binding_id_roundtrip PROPERTIES

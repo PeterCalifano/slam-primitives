@@ -535,6 +535,8 @@ function(handle_gtwrappers)
   endif()
 
   configure_gtwrappers_common()
+  # Project-level wrapper tests must run the interpreter the wrapper is built for.
+  set(PYTHON_EXECUTABLE "${PYTHON_EXECUTABLE}" PARENT_SCOPE)
 
   if(BUILD_AS_MAIN_PROJECT)
     message(STATUS "GTWRAP top namespace: ${GTWRAP_TOP_NAMESPACE}")

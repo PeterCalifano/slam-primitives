@@ -390,16 +390,39 @@ set(installable_targets)
 # Define include target interface
 add_library(${project_name}_include INTERFACE)
 
-# Define include directories for install compatibility
-target_include_directories(${project_name}_include INTERFACE 
-                           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>  # Used during development
-                           #$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/lib/stb_PeterCdev>  
-                           #$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/lib/rapidyaml_PeterCdev>
-                           #$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/lib/gdt>
-                           #$<BUILD_INTERFACE:${CUDA_INCLUDE_DIRS}> 
-                           #$<BUILD_INTERFACE:${OpenCV_INCLUDE_DIRS}>  # Add OpenCV include directories
-                           $<INSTALL_INTERFACE:include/${project_name}>  # Used in installed projects
-)
+# Expose source headers under the repository-name prefix in build-tree packages.
+# A symlink keeps headers current. Native Windows can refuse symlinks, so fall back to a copy.
+set(_project_source_header_dir "${PROJECT_SOURCE_DIR}/src/slam_primitives")
+set(_project_build_include_root "${PROJECT_BINARY_DIR}/public_src_include")
+set(_project_header_copy_include_root "${PROJECT_BINARY_DIR}/public_src_include_copy")
+set(_project_generated_include_root "${PROJECT_BINARY_DIR}/generated_include")
+set(_project_build_header_link "${_project_build_include_root}/${project_name}")
+set(_project_public_header_root "${_project_build_include_root}")
+file(MAKE_DIRECTORY "${_project_build_include_root}"
+     "${_project_generated_include_root}/${project_name}")
+if(EXISTS "${_project_build_header_link}" AND NOT IS_SYMLINK "${_project_build_header_link}")
+  message(FATAL_ERROR "Build-tree include path is occupied: ${_project_build_header_link}")
+endif()
+if(IS_SYMLINK "${_project_build_header_link}")
+  file(REMOVE "${_project_build_header_link}")
+endif()
+file(REMOVE_RECURSE "${_project_header_copy_include_root}")
+file(CREATE_LINK "${_project_source_header_dir}" "${_project_build_header_link}"
+     SYMBOLIC RESULT _project_header_link_result)
+if(NOT _project_header_link_result STREQUAL "0")
+  message(STATUS "Copying build-tree headers because the symlink failed: ${_project_header_link_result}")
+  file(COPY "${_project_source_header_dir}/"
+       DESTINATION "${_project_header_copy_include_root}/${project_name}")
+  # A copy does not follow source edits, so reconfigure when the headers change.
+  file(GLOB_RECURSE _project_source_headers CONFIGURE_DEPENDS "${_project_source_header_dir}/*")
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_project_source_headers})
+  set(_project_public_header_root "${_project_header_copy_include_root}")
+endif()
+
+target_include_directories(${project_name}_include INTERFACE
+                           $<BUILD_INTERFACE:${_project_generated_include_root}>
+                           $<BUILD_INTERFACE:${_project_public_header_root}>
+                           $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
 # Build/install tree for runtime programs: $ORIGIN/../lib
 target_link_options(${project_name}_include INTERFACE
@@ -444,6 +467,19 @@ set(ANY_WRAPPER_ENABLED OFF)
 if(BUILD_AS_MAIN_PROJECT)
   set(LIBNAME_WRAP_TARGET ${project_name})
   handle_gtwrappers() # You may also pass WRAP_INTERFACE_FILES variable to specify interface files, else autofetching is used
+
+  if(${GTWRAP_PYTHON_OPTION_NAME} AND ENABLE_TESTS AND BUILD_TESTING)
+    add_test(
+      NAME slam-primitives_python_binding_id_roundtrip
+      COMMAND ${CMAKE_COMMAND} -E env
+        "PYTHONPATH=${CMAKE_BINARY_DIR}/python:$ENV{PYTHONPATH}"
+        "${PYTHON_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/tests/test_wrapped/python_binding_id_roundtrip.py")
+    set_tests_properties(
+      slam-primitives_python_binding_id_roundtrip PROPERTIES
+      DEPENDS slam-primitives_python_import
+      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/python")
+  endif()
 
   # Determine if any wrapper is enabled
   if(${GTWRAP_PYTHON_OPTION_NAME} OR ${GTWRAP_MATLAB_OPTION_NAME})

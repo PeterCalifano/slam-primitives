@@ -2,11 +2,9 @@
 # slam-primitives INTERFACE library.
 file(GLOB installable_headers "*.h")
 
-file(RELATIVE_PATH relative_path_from_root
-     "${PROJECT_SOURCE_DIR}"
+file(RELATIVE_PATH relative_path_without_src
+     "${PROJECT_SOURCE_DIR}/src/slam_primitives"
      "${CMAKE_CURRENT_SOURCE_DIR}")
-string(REPLACE "src/" "" relative_path_without_src
-       "${relative_path_from_root}")
 
 install(
   FILES ${installable_headers}

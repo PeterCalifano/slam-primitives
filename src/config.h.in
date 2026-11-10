@@ -16,9 +16,8 @@
 #define PROJECT_VERSION "@PROJECT_VERSION@"
 #define FULL_VERSION "@FULL_VERSION@"
 
-
 void PrintVersion()
-{   
+{
     printf("Application Version: %s\n", PROJECT_VERSION);
     printf("Full Version: %s\n", FULL_VERSION);
     printf("Version Details:\n");
@@ -35,4 +34,3 @@ std::string GetVersionString()
 }
 
 #cmakedefine VARIABLE_DEFINED_BY_CMAKE // This is a placeholder for a variable defined by CMake. If it is not define, the #define is not included in the output file from configure_file().
-

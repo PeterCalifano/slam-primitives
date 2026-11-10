@@ -6,6 +6,28 @@ bundles, circular buffers, and sliding-window covisibility graphs.
 
 See README.md for build and installation instructions.
 
+## Covisibility frame window
+
+`CCovisibilityGraph<MAX_FRAMES, FeatureIDT>` owns fixed-capacity storage and
+defaults to retaining `MAX_FRAMES` frames. An explicit constructor argument or
+`setWindowSize()` selects a runtime limit from 1 through that capacity;
+`getWindowSize()` reports the limit and `frameCount()` reports retained contents.
+Shrinking removes the oldest excess frames immediately and updates reverse-index
+slots. Increasing the limit never restores evicted frames. Invalid limits and
+duplicate live frame IDs are rejected before eviction or configuration mutation.
+Spans into removed frames become invalid; the graph object remains in place.
+The same API is exposed by `CCovisibilityGraphWrapper` for Python/MATLAB.
+
+The runnable `examples/template_examples/example_graph_window.cpp` demonstrates
+shrinking and growing without changing the graph type. Build with examples
+enabled and run `example_graph_window`; expected output is:
+
+```text
+window=3 retained=3
+window=1 retained=1 visible=2
+window=4 retained=2
+```
+
 ## Build
 
 ```bash

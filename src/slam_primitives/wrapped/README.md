@@ -15,6 +15,13 @@ The facades convert native span/template-heavy APIs into binding-friendly
 `std::vector` and exception-based flows. Native ownership and behavior stay in
 the existing primitives.
 
+Track identifiers cross this binding boundary as numeric `uint64_t` values,
+and frame identifiers as numeric `uint32_t` values. The native library keeps
+`CFeatureTrackID` and `CFrameID` strong. `allocateTrack()` generates an ID;
+`allocateTrackWithID(id)` preserves a caller-supplied one. The corresponding
+initial-observation methods follow the same rule. Python returns vector values
+as lists, including frame ID lists.
+
 MATLAB note: gtwrap can generate MATLAB wrapper code from this interface, but
 the current vector surface is exposed as gtwrap `std.vector...` handle classes
 such as `std.vectoruint32_t`. Plain MATLAB `uint32` arrays are not part of the

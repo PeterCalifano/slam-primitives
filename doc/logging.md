@@ -46,7 +46,7 @@ SLAM_PRIMITIVES_LOG_LEVEL=debug ./my_consumer
 ## C++ usage
 
 ```cpp
-#include <slam_primitives/logging/CLogger.h>
+#include <slam-primitives/logging/CLogger.h>
 
 int main()
 {

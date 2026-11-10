@@ -391,9 +391,13 @@ set(installable_targets)
 add_library(${project_name}_include INTERFACE)
 
 # Expose source headers under the repository-name prefix in build-tree packages.
+# A symlink keeps headers current. Native Windows can refuse symlinks, so fall back to a copy.
+set(_project_source_header_dir "${PROJECT_SOURCE_DIR}/src/slam_primitives")
 set(_project_build_include_root "${PROJECT_BINARY_DIR}/public_src_include")
+set(_project_header_copy_include_root "${PROJECT_BINARY_DIR}/public_src_include_copy")
 set(_project_generated_include_root "${PROJECT_BINARY_DIR}/generated_include")
 set(_project_build_header_link "${_project_build_include_root}/${project_name}")
+set(_project_public_header_root "${_project_build_include_root}")
 file(MAKE_DIRECTORY "${_project_build_include_root}"
      "${_project_generated_include_root}/${project_name}")
 if(EXISTS "${_project_build_header_link}" AND NOT IS_SYMLINK "${_project_build_header_link}")
@@ -402,15 +406,22 @@ endif()
 if(IS_SYMLINK "${_project_build_header_link}")
   file(REMOVE "${_project_build_header_link}")
 endif()
-file(CREATE_LINK "${PROJECT_SOURCE_DIR}/src/slam_primitives" "${_project_build_header_link}"
+file(REMOVE_RECURSE "${_project_header_copy_include_root}")
+file(CREATE_LINK "${_project_source_header_dir}" "${_project_build_header_link}"
      SYMBOLIC RESULT _project_header_link_result)
 if(NOT _project_header_link_result STREQUAL "0")
-  message(FATAL_ERROR "Cannot link build-tree headers: ${_project_header_link_result}")
+  message(STATUS "Copying build-tree headers because the symlink failed: ${_project_header_link_result}")
+  file(COPY "${_project_source_header_dir}/"
+       DESTINATION "${_project_header_copy_include_root}/${project_name}")
+  # A copy does not follow source edits, so reconfigure when the headers change.
+  file(GLOB_RECURSE _project_source_headers CONFIGURE_DEPENDS "${_project_source_header_dir}/*")
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_project_source_headers})
+  set(_project_public_header_root "${_project_header_copy_include_root}")
 endif()
 
 target_include_directories(${project_name}_include INTERFACE
                            $<BUILD_INTERFACE:${_project_generated_include_root}>
-                           $<BUILD_INTERFACE:${_project_build_include_root}>
+                           $<BUILD_INTERFACE:${_project_public_header_root}>
                            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
 # Build/install tree for runtime programs: $ORIGIN/../lib
